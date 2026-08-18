@@ -14,11 +14,26 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "codetasks.updateTaskStatus",
+        "title": "CodeTasks: Change Status"
+      }
+    ],
     "views": {
       "explorer": [
         {
           "id": "codetasks.taskView",
           "name": "CodeTasks"
+        }
+      ]
+    },
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "codetasks.updateTaskStatus",
+          "when": "view == codetasks.taskView && viewItem == task",
+          "group": "codetasks"
         }
       ]
     }

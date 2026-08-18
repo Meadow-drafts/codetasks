@@ -1,3 +1,11 @@
+export type TaskType =
+	| 'TODO'
+	| 'FIXME'
+	| 'BUG'
+	| 'HACK'
+	| 'REFACTOR'
+	| 'TASK';
+
 export type TaskStatus =
 	| 'open'
 	| 'in-progress'
@@ -13,7 +21,7 @@ export type TaskPriority =
 
 export interface CodeTask {
 	id: string;
-	type: string;
+	type: TaskType;
 	title: string;
 
 	filePath: string;
