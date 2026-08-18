@@ -2,11 +2,18 @@ import * as vscode from 'vscode';
 import { CodeTask } from '../models/task';
 import { TaskStore } from '../store/taskStore';
 
+type TaskGroup = {
+	type: string;
+	tasks: CodeTask[];
+};
+
+type TreeNode = TaskGroup | CodeTask;
+
 export class TaskTreeProvider
-	implements vscode.TreeDataProvider<CodeTask> {
+	implements vscode.TreeDataProvider<TreeNode> {
 
 	private readonly _onDidChangeTreeData =
-		new vscode.EventEmitter<CodeTask | undefined | null | void>();
+		new vscode.EventEmitter<TreeNode | undefined | null | void>();
 
 	readonly onDidChangeTreeData =
 		this._onDidChangeTreeData.event;
@@ -17,26 +24,72 @@ export class TaskTreeProvider
 		this._onDidChangeTreeData.fire();
 	}
 
-	getTreeItem(task: CodeTask): vscode.TreeItem {
+	getTreeItem(element: TreeNode): vscode.TreeItem {
+		if (this.isTaskGroup(element)) {
+			const item = new vscode.TreeItem(
+				element.type,
+				vscode.TreeItemCollapsibleState.Expanded
+			);
+
+			item.description = `${element.tasks.length}`;
+
+			return item;
+		}
+
 		const item = new vscode.TreeItem(
-			task.title,
+			element.title,
 			vscode.TreeItemCollapsibleState.None
 		);
 
-		item.description = `${task.type} • line ${task.line + 1}`;
+		item.description = `line ${element.line + 1}`;
 
-		item.tooltip = `${task.type}: ${task.title}`;
+		item.tooltip = `${element.type}: ${element.title}`;
 
 		item.command = {
 			command: 'codetasks.openTask',
 			title: 'Open Task',
-			arguments: [task],
+			arguments: [element],
 		};
 
 		return item;
 	}
 
-	getChildren(): CodeTask[] {
-		return this.taskStore.getTasks();
+	getChildren(element?: TreeNode): TreeNode[] {
+		if (!element) {
+			return this.createGroups();
+		}
+
+		if (this.isTaskGroup(element)) {
+			return element.tasks;
+		}
+
+		return [];
+	}
+
+	private createGroups(): TaskGroup[] {
+		const tasks = this.taskStore.getTasks();
+
+		const groups = new Map<string, CodeTask[]>();
+
+		for (const task of tasks) {
+			const existing = groups.get(task.type) ?? [];
+
+			existing.push(task);
+
+			groups.set(task.type, existing);
+		}
+
+		return Array.from(groups.entries()).map(
+			([type, tasks]) => ({
+				type,
+				tasks,
+			})
+		);
+	}
+
+	private isTaskGroup(
+		element: TreeNode
+	): element is TaskGroup {
+		return 'tasks' in element;
 	}
 }
