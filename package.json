@@ -16,19 +16,40 @@
   "contributes": {
     "commands": [
       {
+        "command": "codetasks.openWorkspace",
+        "title": "Open Task Workspace",
+        "icon": "$(table)"
+      },
+      {
         "command": "codetasks.updateTaskStatus",
         "title": "CodeTasks: Change Status"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codetasks",
+          "title": "CodeTasks",
+          "icon": "resources/codetasks.svg"
+        }
+      ]
+    },
     "views": {
-      "explorer": [
+      "codetasks": [
         {
           "id": "codetasks.taskView",
-          "name": "CodeTasks"
+          "name": "Tasks"
         }
       ]
     },
     "menus": {
+      "view/title": [
+        {
+          "command": "codetasks.openWorkspace",
+          "when": "view == codetasks.taskView",
+          "group": "navigation"
+        }
+      ],
       "view/item/context": [
         {
           "command": "codetasks.updateTaskStatus",

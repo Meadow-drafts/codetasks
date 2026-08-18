@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { scanWorkspace } from "./scanner/taskScanner";
 import { TaskStore } from "./store/taskStore";
 import { TaskTreeProvider } from "./providers/taskTreeProvider";
+import { TaskWorkspaceProvider } from "./webview/taskWorkspace";
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log("CodeTasks is now active!");
@@ -15,6 +16,11 @@ export async function activate(context: vscode.ExtensionContext) {
   console.log(`CodeTasks found ${taskStore.getTaskCount()} task(s).`);
 
   const taskTreeProvider = new TaskTreeProvider(taskStore);
+
+  const taskWorkspaceProvider = new TaskWorkspaceProvider(
+    context.extensionUri,
+    taskStore,
+  );
 
   vscode.window.registerTreeDataProvider(
     "codetasks.taskView",
@@ -91,6 +97,12 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(updateTaskStatusCommand);
 
   context.subscriptions.push(openTaskCommand);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("codetasks.openWorkspace", () => {
+      taskWorkspaceProvider.open();
+    }),
+  );
 }
 
 export function deactivate() {}

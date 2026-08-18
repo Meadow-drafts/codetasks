@@ -1,6 +1,11 @@
+import * as vscode from "vscode";
 import { CodeTask } from "../models/task";
 
 export class TaskStore {
+  private readonly _onDidChange = new vscode.EventEmitter<void>();
+
+  readonly onDidChange = this._onDidChange.event;
+
   private tasks: CodeTask[] = [];
 
   setTasks(tasks: CodeTask[]): void {
@@ -22,6 +27,8 @@ export class TaskStore {
     }
 
     task.status = status;
+
+    this._onDidChange.fire();
 
     return true;
   }

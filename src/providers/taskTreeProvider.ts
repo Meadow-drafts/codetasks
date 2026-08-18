@@ -38,7 +38,11 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TreeNode> {
 
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  constructor(private readonly taskStore: TaskStore) {}
+  constructor(private readonly taskStore: TaskStore) {
+    this.taskStore.onDidChange(() => {
+	this._onDidChangeTreeData.fire();
+});
+  }
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
