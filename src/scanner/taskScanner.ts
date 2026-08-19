@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { CodeTask, TaskType } from "../models/task";
 
-const TASK_PATTERN = /\b(TODO|FIXME|BUG|HACK|REFACTOR|TASK)\s*:\s*(.+)/i;
+export const TASK_PATTERN = /\b(TODO|FIXME|BUG|HACK|REFACTOR|TASK)\s*:\s*(.+)/i;
 
 const SUPPORTED_TASK_TYPES: TaskType[] = [
   "TODO",
@@ -47,10 +47,48 @@ function createNewTask(
   };
 }
 
-export async function scanWorkspace(): Promise<CodeTask[]> {
+function scanLines(filePath: string, lines: string[]): CodeTask[] {
+  const taskOccurrences = new Map<string, number>();
   const tasks: CodeTask[] = [];
 
-  const taskOccurrences = new Map<string, number>();
+  lines.forEach((line, index) => {
+    const match = line.match(TASK_PATTERN);
+
+    if (!match) {
+      return;
+    }
+
+    const [, rawType, title] = match;
+    const type = rawType.toUpperCase();
+
+    if (!isTaskType(type)) {
+      return;
+    }
+
+    const occurrenceKey = [filePath, type, title.trim()].join("|");
+
+    const occurrence = (taskOccurrences.get(occurrenceKey) ?? 0) + 1;
+
+    taskOccurrences.set(occurrenceKey, occurrence);
+
+    const taskId = createTaskId(filePath, type, title, occurrence);
+
+    tasks.push(createNewTask(taskId, type, title, filePath, index));
+  });
+
+  return tasks;
+}
+
+export async function scanTextDocument(
+  document: vscode.TextDocument,
+): Promise<CodeTask[]> {
+  const lines = document.getText().split(/\r?\n/);
+
+  return scanLines(document.uri.fsPath, lines);
+}
+
+export async function scanWorkspace(): Promise<CodeTask[]> {
+  const tasks: CodeTask[] = [];
 
   const files = await vscode.workspace.findFiles(
     "**/*",
@@ -60,32 +98,7 @@ export async function scanWorkspace(): Promise<CodeTask[]> {
   for (const file of files) {
     try {
       const document = await vscode.workspace.openTextDocument(file);
-      const lines = document.getText().split(/\r?\n/);
-
-      lines.forEach((line, index) => {
-        const match = line.match(TASK_PATTERN);
-
-        if (!match) {
-          return;
-        }
-
-        const [, rawType, title] = match;
-        const type = rawType.toUpperCase();
-
-        if (!isTaskType(type)) {
-          return;
-        }
-
-        const occurrenceKey = [file.fsPath, type, title.trim()].join("|");
-
-        const occurrence = (taskOccurrences.get(occurrenceKey) ?? 0) + 1;
-
-        taskOccurrences.set(occurrenceKey, occurrence);
-
-        const taskId = createTaskId(file.fsPath, type, title, occurrence);
-
-        tasks.push(createNewTask(taskId, type, title, file.fsPath, index));
-      });
+      tasks.push(...(await scanTextDocument(document)));
     } catch (error) {
       console.error(`Failed to scan ${file.fsPath}`, error);
     }

@@ -1,12 +1,17 @@
 import * as vscode from "vscode";
 import { CodeTask } from "./models/task";
-import { scanWorkspace } from "./scanner/taskScanner";
+import {
+  scanTextDocument,
+  scanWorkspace,
+  TASK_PATTERN,
+} from "./scanner/taskScanner";
 import { TaskStore } from "./store/taskStore";
 import { TaskTreeProvider } from "./providers/taskTreeProvider";
 import { TaskWorkspaceProvider } from "./webview/taskWorkspace";
 import { TaskDetailsProvider } from "./webview/taskDetails";
 import { TaskArchivedProvider } from "./webview/taskArchived";
 import { TaskCodeLensProvider } from "./providers/taskCodeLensProvider";
+import { TaskDecorationManager } from "./providers/taskDecorationManager";
 
 async function pickTask(
   tasks: CodeTask[],
@@ -61,6 +66,7 @@ export async function activate(context: vscode.ExtensionContext) {
   console.log("CodeTasks is now active!");
 
   const taskStore = new TaskStore(context.workspaceState);
+  const pendingFileRefreshes = new Map<string, ReturnType<typeof setTimeout>>();
 
   const refreshTasks = async () => {
     const tasks = await scanWorkspace();
@@ -89,6 +95,10 @@ export async function activate(context: vscode.ExtensionContext) {
     taskStore,
   );
   const taskCodeLensProvider = new TaskCodeLensProvider(taskStore);
+  const taskDecorationManager = new TaskDecorationManager(
+    context.extensionUri,
+    taskStore,
+  );
 
   vscode.window.registerTreeDataProvider(
     "codetasks.taskView",
@@ -101,6 +111,63 @@ export async function activate(context: vscode.ExtensionContext) {
       taskCodeLensProvider,
     ),
   );
+  context.subscriptions.push(taskDecorationManager);
+
+  const scheduleFileRefresh = (document: vscode.TextDocument) => {
+    if (document.uri.scheme !== "file") {
+      return;
+    }
+
+    const filePath = document.uri.fsPath;
+    const isTracked = taskStore
+      .getTasks()
+      .some((task) => task.filePath === filePath);
+    const hasTaskMarker =
+      isTracked || TASK_PATTERN.test(document.getText());
+
+    if (!hasTaskMarker) {
+      return;
+    }
+
+    const existingTimer = pendingFileRefreshes.get(filePath);
+
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+    }
+
+    const timer = setTimeout(async () => {
+      pendingFileRefreshes.delete(filePath);
+
+      try {
+        const latestDocument = await vscode.workspace.openTextDocument(
+          document.uri,
+        );
+
+        const scannedTasks = await scanTextDocument(latestDocument);
+
+        await taskStore.syncTasksForFile(filePath, scannedTasks);
+      } catch (error) {
+        console.error(`CodeTasks: Failed to sync ${filePath}`, error);
+      }
+    }, 800);
+
+    pendingFileRefreshes.set(filePath, timer);
+  };
+
+  context.subscriptions.push(
+    vscode.workspace.onDidSaveTextDocument((document) => {
+      scheduleFileRefresh(document);
+    }),
+  );
+  context.subscriptions.push({
+    dispose: () => {
+      for (const timer of pendingFileRefreshes.values()) {
+        clearTimeout(timer);
+      }
+
+      pendingFileRefreshes.clear();
+    },
+  });
 
   const openTaskCommand = vscode.commands.registerCommand(
     "codetasks.openTask",

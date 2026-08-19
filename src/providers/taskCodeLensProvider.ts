@@ -1,8 +1,7 @@
 import * as vscode from "vscode";
 import { TaskStore } from "../store/taskStore";
 import { CodeTask, TaskPriority, TaskStatus } from "../models/task";
-
-const TASK_PATTERN = /\b(TODO|FIXME|BUG|HACK|REFACTOR|TASK)\s*:\s*(.+)/i;
+import { TASK_PATTERN } from "../scanner/taskScanner";
 
 type TaskMarker = {
   line: number;

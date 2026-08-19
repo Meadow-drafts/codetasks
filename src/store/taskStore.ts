@@ -39,6 +39,29 @@ export class TaskStore {
     this.changeEmitter.fire();
   }
 
+  async syncTasksForFile(
+    filePath: string,
+    scannedTasks: CodeTask[],
+  ): Promise<void> {
+    const otherTasks = this.tasks.filter(
+      (task) => task.filePath !== filePath,
+    );
+    const existingFileTasks = this.tasks.filter(
+      (task) => task.filePath === filePath,
+    );
+
+    const reconciledFileTasks = reconcileTasks(
+      scannedTasks,
+      existingFileTasks,
+    );
+
+    this.tasks = [...otherTasks, ...reconciledFileTasks];
+
+    await this.save();
+
+    this.changeEmitter.fire();
+  }
+
   getTasks(): CodeTask[] {
     return [...this.tasks];
   }

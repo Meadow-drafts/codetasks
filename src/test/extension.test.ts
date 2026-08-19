@@ -188,4 +188,50 @@ suite("CodeTasks Store", () => {
     assert.ok(archivedTask.archivedAt);
     assert.strictEqual(memento.get<CodeTask[]>(TASKS_KEY)?.length, 1);
   });
+
+  test("syncTasksForFile replaces only the changed file tasks", async () => {
+    const memento = new InMemoryMemento();
+    const store = new TaskStore(memento);
+
+    const fileOneTask = createTask({
+      id: "file-one-task",
+      filePath: "/tmp/file-one.ts",
+      title: "File one task",
+      line: 1,
+    });
+
+    const fileTwoTask = createTask({
+      id: "file-two-task",
+      filePath: "/tmp/file-two.ts",
+      title: "File two task",
+      line: 8,
+      archivedAt: "2026-01-01T00:00:00.000Z",
+    });
+
+    await store.setTasks([fileOneTask, fileTwoTask]);
+
+    const rescannedFileOneTask = createTask({
+      id: "file-one-task",
+      filePath: "/tmp/file-one.ts",
+      title: "File one task updated",
+      line: 3,
+    });
+
+    await store.syncTasksForFile("/tmp/file-one.ts", [rescannedFileOneTask]);
+
+    const tasks = store.getTasks();
+
+    assert.strictEqual(tasks.length, 2);
+    assert.strictEqual(
+      tasks.find((task) => task.filePath === "/tmp/file-one.ts")?.title,
+      "File one task updated",
+    );
+    assert.strictEqual(
+      tasks.find((task) => task.filePath === "/tmp/file-two.ts")?.title,
+      "File two task",
+    );
+    assert.ok(
+      tasks.find((task) => task.filePath === "/tmp/file-two.ts")?.archivedAt,
+    );
+  });
 });
