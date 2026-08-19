@@ -229,105 +229,109 @@ export class TaskWorkspaceProvider {
       .map(
         (task) => `
 			<tr
-    class="task-row"
-    data-task-id="${this.escapeHtml(task.id)}"
-    data-title="${this.escapeHtml(task.title.toLowerCase())}"
-    data-status="${task.status}"
-    data-type="${task.type}"
-    data-priority="${task.priority}"
-	data-created-at="${this.escapeHtml(task.createdAt)}"
-data-updated-at="${this.escapeHtml(task.updatedAt)}"
->
+					class="task-row"
+					data-task-id="${this.escapeHtml(task.id)}"
+					data-title="${this.escapeHtml(task.title.toLowerCase())}"
+					data-status="${task.status}"
+					data-type="${task.type}"
+					data-priority="${task.priority}"
+					data-created-at="${this.escapeHtml(task.createdAt)}"
+					data-updated-at="${this.escapeHtml(task.updatedAt)}"
+					data-file-name="${this.escapeHtml(
+						vscode.Uri.file(task.filePath).fsPath.split("/").pop() || ""
+					)}"
+					data-line="${task.line + 1}"
+				>
+								<td>
+									${this.escapeHtml(task.title)}
+								</td>
+
+								<td>
+									${task.type}
+								</td>
+
+								<td>
+								<select
+								class="status-select"
+								data-task-id="${this.escapeHtml(task.id)}"
+								data-current-status="${task.status}"
+							>
+									<option
+										value="open"
+										${task.status === "open" ? "selected" : ""}
+									>
+										Open
+									</option>
+
+									<option
+										value="in-progress"
+										${task.status === "in-progress" ? "selected" : ""}
+									>
+										In Progress
+									</option>
+
+									<option
+										value="blocked"
+										${task.status === "blocked" ? "selected" : ""}
+									>
+										Blocked
+									</option>
+
+									<option
+										value="review"
+										${task.status === "review" ? "selected" : ""}
+									>
+										Review
+									</option>
+
+									<option
+										value="done"
+										${task.status === "done" ? "selected" : ""}
+									>
+										Done
+									</option>
+								</select>
+				</td>
 				<td>
-					${this.escapeHtml(task.title)}
+					<select
+						class="priority-select"
+						data-task-id="${this.escapeHtml(task.id)}"
+						data-current-priority="${task.priority}"
+					>
+						<option
+							value="low"
+							${task.priority === "low" ? "selected" : ""}
+						>
+							Low
+						</option>
+
+						<option
+							value="medium"
+							${task.priority === "medium" ? "selected" : ""}
+						>
+							Medium
+						</option>
+
+						<option
+							value="high"
+							${task.priority === "high" ? "selected" : ""}
+						>
+							High
+						</option>
+
+						<option
+							value="critical"
+							${task.priority === "critical" ? "selected" : ""}
+						>
+							Critical
+						</option>
+					</select>
 				</td>
 
-				<td>
-					${task.type}
-				</td>
-
-				<td>
-				<select
-				class="status-select"
-				data-task-id="${this.escapeHtml(task.id)}"
-				data-current-status="${task.status}"
-			>
-					<option
-						value="open"
-						${task.status === "open" ? "selected" : ""}
-					>
-						Open
-					</option>
-
-					<option
-						value="in-progress"
-						${task.status === "in-progress" ? "selected" : ""}
-					>
-						In Progress
-					</option>
-
-					<option
-						value="blocked"
-						${task.status === "blocked" ? "selected" : ""}
-					>
-						Blocked
-					</option>
-
-					<option
-						value="review"
-						${task.status === "review" ? "selected" : ""}
-					>
-						Review
-					</option>
-
-					<option
-						value="done"
-						${task.status === "done" ? "selected" : ""}
-					>
-						Done
-					</option>
-				</select>
-</td>
-<td>
-    <select
-        class="priority-select"
-        data-task-id="${this.escapeHtml(task.id)}"
-        data-current-priority="${task.priority}"
-    >
-        <option
-            value="low"
-            ${task.priority === "low" ? "selected" : ""}
-        >
-            Low
-        </option>
-
-        <option
-            value="medium"
-            ${task.priority === "medium" ? "selected" : ""}
-        >
-            Medium
-        </option>
-
-        <option
-            value="high"
-            ${task.priority === "high" ? "selected" : ""}
-        >
-            High
-        </option>
-
-        <option
-            value="critical"
-            ${task.priority === "critical" ? "selected" : ""}
-        >
-            Critical
-        </option>
-    </select>
-</td>
-
-				<td>
-					${this.escapeHtml(task.filePath)}:${task.line + 1}
-				</td>
-			</tr>
+								<td>
+									${this.escapeHtml(task.filePath)}:${task.line + 1}
+								</td>
+							</tr>
 		`,
       )
       .join("");
@@ -587,71 +591,232 @@ data-updated-at="${this.escapeHtml(task.updatedAt)}"
 						padding: 8px;
 					}
 
+	  				.kanban-card {
+					padding: 12px;
 
-					.kanban-card {
-						background:
-							var(--vscode-editor-background);
+					border: 1px solid
+						var(--vscode-panel-border);
 
-						border:
-							1px solid
-							var(--vscode-panel-border);
+					border-radius: 6px;
 
-						border-radius: 5px;
+					background:
+						var(--vscode-editor-background);
 
-						padding: 10px;
+					cursor: grab;
 
-						cursor: pointer;
-					}
-
-
-					.kanban-card:hover {
-						background:
-							var(--vscode-list-hoverBackground);
-					}
+					transition:
+						transform 0.12s ease,
+						border-color 0.12s ease,
+						box-shadow 0.12s ease;
+				}
 
 
-					.kanban-card-title {
-						font-weight: 500;
+				.kanban-card:hover {
+					border-color:
+						var(--vscode-focusBorder);
 
-						margin-bottom: 8px;
-					}
+					box-shadow:
+						0 2px 8px
+						rgba(0, 0, 0, 0.15);
 
-
-					.kanban-card-meta {
-						display: flex;
-
-						justify-content:
-							space-between;
-
-						font-size: 12px;
-
-						color:
-							var(--vscode-descriptionForeground);
-					}
+					transform:
+						translateY(-1px);
+				}
 
 
-					.kanban-empty {
-						color:
-							var(--vscode-descriptionForeground);
-
-						text-align: center;
-
-						padding: 20px 10px;
-
-						font-size: 12px;
-					}
-						.kanban-card.dragging {
-						opacity: 0.5;
-					}
+				.kanban-card:active {
+					cursor: grabbing;
+				}
 
 
-					.kanban-column.drag-over {
-						border-color:
-							var(--vscode-focusBorder);
+				.kanban-card.dragging {
+					opacity: 0.5;
 
-						background:
-							var(--vscode-list-hoverBackground);
-					}
+					transform:
+						rotate(1deg);
+				}
+	
+				.kanban-card-title {
+					font-size: 14px;
+
+					font-weight: 500;
+
+					line-height: 1.4;
+
+					margin-bottom: 10px;
+
+					word-break: break-word;
+				}
+
+				.kanban-card-meta {
+					display: flex;
+
+					align-items: center;
+
+					justify-content: space-between;
+
+					gap: 8px;
+
+					margin-bottom: 10px;
+				}
+
+
+				.task-type-badge,
+				.priority-badge {
+					display: inline-flex;
+
+					align-items: center;
+
+					padding: 2px 7px;
+
+					border-radius: 999px;
+
+					font-size: 11px;
+
+					font-weight: 600;
+
+					text-transform: uppercase;
+				}
+
+	  			.priority-low {
+					color:
+						var(--vscode-testing-iconPassed);
+
+					background:
+						color-mix(
+							in srgb,
+							var(--vscode-testing-iconPassed) 12%,
+							transparent
+						);
+				}
+
+
+				.priority-medium {
+					color:
+						var(--vscode-charts-blue);
+
+					background:
+						color-mix(
+							in srgb,
+							var(--vscode-charts-blue) 12%,
+							transparent
+						);
+				}
+
+
+				.priority-high {
+					color:
+						var(--vscode-charts-orange);
+
+					background:
+						color-mix(
+							in srgb,
+							var(--vscode-charts-orange) 12%,
+							transparent
+						);
+				}
+
+
+				.priority-critical {
+					color:
+						var(--vscode-errorForeground);
+
+					background:
+						color-mix(
+							in srgb,
+							var(--vscode-errorForeground) 12%,
+							transparent
+						);
+				}
+					
+
+				.kanban-empty {
+					color:
+						var(--vscode-descriptionForeground);
+
+					text-align: center;
+
+					padding: 20px 10px;
+
+					font-size: 12px;
+				}
+					
+
+
+				.kanban-column.drag-over {
+					border-color:
+						var(--vscode-focusBorder);
+
+					background:
+						var(--vscode-list-hoverBackground);
+				}
+				
+				.type-todo {
+					color:
+						var(--vscode-charts-blue);
+				}
+
+
+				.type-fixme {
+					color:
+						var(--vscode-charts-orange);
+				}
+
+
+				.type-bug {
+					color:
+						var(--vscode-errorForeground);
+				}
+
+
+				.type-hack {
+					color:
+						var(--vscode-charts-purple);
+				}
+
+
+				.type-refactor {
+					color:
+						var(--vscode-charts-green);
+				}
+
+
+				.type-task {
+					color:
+						var(--vscode-descriptionForeground);
+				}
+				
+				.kanban-card-location {
+					display: flex;
+
+					align-items: center;
+
+					gap: 5px;
+
+					color:
+						var(--vscode-descriptionForeground);
+
+					font-size: 11px;
+
+					white-space: nowrap;
+
+					overflow: hidden;
+
+					text-overflow: ellipsis;
+				}
+
+
+				.kanban-card-location
+				.codicon {
+					flex-shrink: 0;
+				}
+
+
+				.kanban-card-line {
+					opacity: 0.7;
+
+					flex-shrink: 0;
+				}
 				</style>
 			</head>
 	  	
@@ -945,6 +1110,15 @@ data-updated-at="${this.escapeHtml(task.updatedAt)}"
 				* ============================================================
 				*/
 
+				function escapeHtml(value) {
+					return value
+						.replace(/&/g, "&amp;")
+						.replace(/</g, "&lt;")
+						.replace(/>/g, "&gt;")
+						.replace(/"/g, "&quot;")
+						.replace(/'/g, "&#039;");
+				}
+
 				function renderKanban() {
 
 					const columns =
@@ -1090,18 +1264,45 @@ data-updated-at="${this.escapeHtml(task.updatedAt)}"
 							/*
 							* CARD CONTENT
 							*/
+							const fileName =
+								row.dataset.fileName || "";
+
+							const line =
+								row.dataset.line || "";
+
+
 							card.innerHTML =
 								'<div class="kanban-card-title">' +
-									title +
+									escapeHtml(title) +
 								'</div>' +
 
 								'<div class="kanban-card-meta">' +
-									'<span>' +
+
+									'<span class="task-type-badge type-' +
+										type.toLowerCase() +
+									'">' +
 										type +
 									'</span>' +
 
-									'<span>' +
+									'<span class="priority-badge priority-' +
+										priority.toLowerCase() +
+									'">' +
 										priority +
+									'</span>' +
+
+								'</div>' +
+
+								'<div class="kanban-card-location">' +
+
+									'<span class="codicon codicon-file-code"></span>' +
+
+									'<span>' +
+										fileName +
+									'</span>' +
+
+									'<span class="kanban-card-line">' +
+										'Line ' +
+										line +
 									'</span>' +
 
 								'</div>';
@@ -2174,3 +2375,6 @@ data-updated-at="${this.escapeHtml(task.updatedAt)}"
       .replace(/'/g, "&#039;");
   }
 }
+
+
+// possiblity to add a task directly on the view 
