@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { CodeTask } from "./models/task";
 import {
+  DEFAULT_SCAN_EXCLUDE_GLOB,
   scanTextDocument,
   scanWorkspace,
   TASK_PATTERN,
@@ -68,8 +69,16 @@ export async function activate(context: vscode.ExtensionContext) {
   const taskStore = new TaskStore(context.workspaceState);
   const pendingFileRefreshes = new Map<string, ReturnType<typeof setTimeout>>();
 
+  const getConfig = () => vscode.workspace.getConfiguration("codetasks");
+
   const refreshTasks = async () => {
-    const tasks = await scanWorkspace();
+    const excludeGlob =
+      getConfig().get<string>(
+        "scanExcludeGlobs",
+        DEFAULT_SCAN_EXCLUDE_GLOB,
+      ) ?? DEFAULT_SCAN_EXCLUDE_GLOB;
+
+    const tasks = await scanWorkspace(excludeGlob);
 
     await taskStore.setTasks(tasks);
 
@@ -78,12 +87,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
   await refreshTasks();
 
-  const taskTreeProvider = new TaskTreeProvider(taskStore);
-
   const taskWorkspaceProvider = new TaskWorkspaceProvider(
     context.extensionUri,
     taskStore,
   );
+
+  const taskTreeProvider = new TaskTreeProvider(taskStore);
 
   const taskDetailsProvider = new TaskDetailsProvider(
     context.extensionUri,
@@ -113,6 +122,29 @@ export async function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(taskDecorationManager);
 
+  if (
+    getConfig().get<boolean>("autoOpenWorkspaceOnStartup", false) &&
+    taskStore.getTaskCount() > 0
+  ) {
+    taskWorkspaceProvider.open();
+  }
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("codetasks.codeLensEnabled")) {
+        taskCodeLensProvider.refresh();
+      }
+
+      if (event.affectsConfiguration("codetasks.decorationsEnabled")) {
+        taskDecorationManager.refresh();
+      }
+
+      if (event.affectsConfiguration("codetasks.scanExcludeGlobs")) {
+        void refreshTasks();
+      }
+    }),
+  );
+
   const scheduleFileRefresh = (document: vscode.TextDocument) => {
     if (document.uri.scheme !== "file") {
       return;
@@ -128,6 +160,15 @@ export async function activate(context: vscode.ExtensionContext) {
     if (!hasTaskMarker) {
       return;
     }
+
+    if (!getConfig().get<boolean>("autoRescanEnabled", true)) {
+      return;
+    }
+
+    const debounceMs = Math.max(
+      100,
+      getConfig().get<number>("autoRescanDebounceMs", 800),
+    );
 
     const existingTimer = pendingFileRefreshes.get(filePath);
 
@@ -149,7 +190,7 @@ export async function activate(context: vscode.ExtensionContext) {
       } catch (error) {
         console.error(`CodeTasks: Failed to sync ${filePath}`, error);
       }
-    }, 800);
+    }, debounceMs);
 
     pendingFileRefreshes.set(filePath, timer);
   };
@@ -187,6 +228,16 @@ export async function activate(context: vscode.ExtensionContext) {
       editor.revealRange(
         new vscode.Range(position, position),
         vscode.TextEditorRevealType.InCenter,
+      );
+    },
+  );
+
+  const openSettingsCommand = vscode.commands.registerCommand(
+    "codetasks.openSettings",
+    () => {
+      void vscode.commands.executeCommand(
+        "workbench.action.openSettings",
+        "codetasks",
       );
     },
   );
@@ -456,6 +507,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(refreshTasksCommand);
+  context.subscriptions.push(openSettingsCommand);
   context.subscriptions.push(updateTaskStatusCommand);
   context.subscriptions.push(restoreTaskCommand);
   context.subscriptions.push(archiveTaskCommand);

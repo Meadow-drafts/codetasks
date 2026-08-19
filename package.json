@@ -14,11 +14,53 @@
   ],
   "main": "./dist/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "CodeTasks",
+      "properties": {
+        "codetasks.autoRescanEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically rescan a file shortly after it is saved."
+        },
+        "codetasks.autoRescanDebounceMs": {
+          "type": "number",
+          "default": 800,
+          "minimum": 100,
+          "maximum": 5000,
+          "description": "Delay in milliseconds before CodeTasks rescans a file after it is saved."
+        },
+        "codetasks.codeLensEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show CodeTasks CodeLens actions above task markers."
+        },
+        "codetasks.decorationsEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show task gutter decorations in the editor."
+        },
+        "codetasks.scanExcludeGlobs": {
+          "type": "string",
+          "default": "**/{node_modules,.git,dist,build,out}/**",
+          "description": "Glob patterns excluded from full workspace scans."
+        },
+        "codetasks.autoOpenWorkspaceOnStartup": {
+          "type": "boolean",
+          "default": false,
+          "description": "Open the CodeTasks workspace automatically after activation if tasks are found."
+        }
+      }
+    },
     "commands": [
       {
         "command": "codetasks.openWorkspace",
         "title": "Open Task Workspace",
         "icon": "$(table)"
+      },
+      {
+        "command": "codetasks.openSettings",
+        "title": "CodeTasks: Settings",
+        "icon": "$(gear)"
       },
       {
         "command": "codetasks.updateTaskStatus",
@@ -93,6 +135,11 @@
           "command": "codetasks.openArchivedTasks",
           "when": "view == codetasks.taskView",
           "group": "navigation@2"
+        },
+        {
+          "command": "codetasks.openSettings",
+          "when": "view == codetasks.taskView",
+          "group": "navigation@3"
         }
       ],
       "view/item/context": [

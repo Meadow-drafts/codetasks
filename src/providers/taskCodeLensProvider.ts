@@ -87,9 +87,21 @@ export class TaskCodeLensProvider implements vscode.CodeLensProvider {
     });
   }
 
+  refresh(): void {
+    this.onDidChangeCodeLensesEmitter.fire();
+  }
+
   provideCodeLenses(
     document: vscode.TextDocument,
   ): vscode.ProviderResult<vscode.CodeLens[]> {
+    if (
+      !vscode.workspace
+        .getConfiguration("codetasks")
+        .get<boolean>("codeLensEnabled", true)
+    ) {
+      return [];
+    }
+
     const markers = findTaskMarkers(document);
     const taskByLocation = new Map(
       this.taskStore.getTasks().map((task) => [

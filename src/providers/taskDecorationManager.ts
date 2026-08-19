@@ -103,6 +103,10 @@ export class TaskDecorationManager implements vscode.Disposable {
     this.updateVisibleEditors();
   }
 
+  refresh(): void {
+    this.updateVisibleEditors();
+  }
+
   dispose(): void {
     this.activeDecorationType.dispose();
     this.archivedDecorationType.dispose();
@@ -162,10 +166,18 @@ export class TaskDecorationManager implements vscode.Disposable {
   }
 
   private updateVisibleEditors(): void {
+    const decorationsEnabled = vscode.workspace
+      .getConfiguration("codetasks")
+      .get<boolean>("decorationsEnabled", true);
+
     for (const editor of vscode.window.visibleTextEditors) {
-      const { active, archived } = this.getDecorationsForDocument(
-        editor.document,
-      );
+      if (!decorationsEnabled) {
+        editor.setDecorations(this.activeDecorationType, []);
+        editor.setDecorations(this.archivedDecorationType, []);
+        continue;
+      }
+
+      const { active, archived } = this.getDecorationsForDocument(editor.document);
 
       editor.setDecorations(this.activeDecorationType, active);
       editor.setDecorations(this.archivedDecorationType, archived);

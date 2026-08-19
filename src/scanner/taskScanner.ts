@@ -2,6 +2,8 @@ import * as vscode from "vscode";
 import { CodeTask, TaskType } from "../models/task";
 
 export const TASK_PATTERN = /\b(TODO|FIXME|BUG|HACK|REFACTOR|TASK)\s*:\s*(.+)/i;
+export const DEFAULT_SCAN_EXCLUDE_GLOB =
+  "**/{node_modules,.git,dist,build,out}/**";
 
 const SUPPORTED_TASK_TYPES: TaskType[] = [
   "TODO",
@@ -87,12 +89,14 @@ export async function scanTextDocument(
   return scanLines(document.uri.fsPath, lines);
 }
 
-export async function scanWorkspace(): Promise<CodeTask[]> {
+export async function scanWorkspace(
+  excludeGlob: string = DEFAULT_SCAN_EXCLUDE_GLOB,
+): Promise<CodeTask[]> {
   const tasks: CodeTask[] = [];
 
   const files = await vscode.workspace.findFiles(
     "**/*",
-    "**/{node_modules,.git,dist,build,out}/**",
+    excludeGlob,
   );
 
   for (const file of files) {
