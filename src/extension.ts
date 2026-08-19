@@ -34,6 +34,29 @@ async function pickTask(
   return picked?.task;
 }
 
+async function getTaskAtActiveEditorLine(
+  taskStore: TaskStore,
+): Promise<CodeTask | undefined> {
+  const editor = vscode.window.activeTextEditor;
+
+  if (!editor) {
+    vscode.window.showInformationMessage(
+      "CodeTasks: Open a file containing a task first.",
+    );
+    return undefined;
+  }
+
+  const document = editor.document;
+  const lineNumber = editor.selection.active.line;
+
+  return taskStore.getTasks().find((task) => {
+    return (
+      task.filePath === document.uri.fsPath &&
+      task.line === lineNumber
+    );
+  });
+}
+
 export async function activate(context: vscode.ExtensionContext) {
   console.log("CodeTasks is now active!");
 
@@ -97,6 +120,122 @@ export async function activate(context: vscode.ExtensionContext) {
       editor.revealRange(
         new vscode.Range(position, position),
         vscode.TextEditorRevealType.InCenter,
+      );
+    },
+  );
+
+  const openTaskDetailsFromEditorCommand =
+    vscode.commands.registerCommand(
+      "codetasks.openTaskDetailsFromEditor",
+      async () => {
+        const task = await getTaskAtActiveEditorLine(taskStore);
+
+        if (!task) {
+          vscode.window.showInformationMessage(
+            "CodeTasks: No task marker found on the current line.",
+          );
+          return;
+        }
+
+        taskDetailsProvider.open(task.id);
+      },
+    );
+
+  const archiveTaskFromEditorCommand = vscode.commands.registerCommand(
+    "codetasks.archiveTaskFromEditor",
+    async () => {
+      const task = await getTaskAtActiveEditorLine(taskStore);
+
+      if (!task) {
+        vscode.window.showInformationMessage(
+          "CodeTasks: No task marker found on the current line.",
+        );
+        return;
+      }
+
+      if (task.archivedAt) {
+        vscode.window.showInformationMessage(
+          `Task "${task.title}" is already archived.`,
+        );
+        return;
+      }
+
+      const updated = await taskStore.archiveTask(task.id);
+
+      if (!updated) {
+        return;
+      }
+
+      taskTreeProvider.refresh();
+
+      vscode.window.showInformationMessage(
+        `Task "${task.title}" archived.`,
+      );
+    },
+  );
+
+  const markTaskDoneFromEditorCommand = vscode.commands.registerCommand(
+    "codetasks.markTaskDoneFromEditor",
+    async () => {
+      const task = await getTaskAtActiveEditorLine(taskStore);
+
+      if (!task) {
+        vscode.window.showInformationMessage(
+          "CodeTasks: No task marker found on the current line.",
+        );
+        return;
+      }
+
+      if (task.archivedAt) {
+        vscode.window.showInformationMessage(
+          `Task "${task.title}" is archived. Restore it first.`,
+        );
+        return;
+      }
+
+      const updated = await taskStore.updateTaskStatus(task.id, "done");
+
+      if (!updated) {
+        return;
+      }
+
+      taskTreeProvider.refresh();
+
+      vscode.window.showInformationMessage(
+        `Task "${task.title}" marked done.`,
+      );
+    },
+  );
+
+  const restoreTaskFromEditorCommand = vscode.commands.registerCommand(
+    "codetasks.restoreTaskFromEditor",
+    async () => {
+      const task = await getTaskAtActiveEditorLine(taskStore);
+
+      if (!task) {
+        vscode.window.showInformationMessage(
+          "CodeTasks: No task marker found on the current line.",
+        );
+        return;
+      }
+
+      if (!task.archivedAt) {
+        vscode.window.showInformationMessage(
+          `Task "${task.title}" is already active.`,
+        );
+        return;
+      }
+
+      const updated = await taskStore.unarchiveTask(task.id);
+
+      if (!updated) {
+        return;
+      }
+
+      taskTreeProvider.refresh();
+
+      vscode.window.showInformationMessage(
+        `Task "${task.title}" restored.`,
       );
     },
   );
@@ -254,6 +393,10 @@ export async function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(restoreTaskCommand);
   context.subscriptions.push(archiveTaskCommand);
   context.subscriptions.push(markTaskDoneCommand);
+  context.subscriptions.push(openTaskDetailsFromEditorCommand);
+  context.subscriptions.push(archiveTaskFromEditorCommand);
+  context.subscriptions.push(markTaskDoneFromEditorCommand);
+  context.subscriptions.push(restoreTaskFromEditorCommand);
 
   context.subscriptions.push(openTaskCommand);
 
