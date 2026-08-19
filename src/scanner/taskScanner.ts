@@ -16,8 +16,41 @@ function isTaskType(value: string): value is TaskType {
   return SUPPORTED_TASK_TYPES.includes(value as TaskType);
 }
 
+function createTaskId(
+  filePath: string,
+  type: TaskType,
+  title: string,
+  occurrence: number,
+): string {
+  return [filePath, type, title.trim(), occurrence].join("|");
+}
+
+function createNewTask(
+  id: string,
+  type: TaskType,
+  title: string,
+  filePath: string,
+  line: number,
+): CodeTask {
+  const now = new Date().toISOString();
+
+  return {
+    id,
+    type,
+    title: title.trim(),
+    filePath,
+    line,
+    status: "open",
+    priority: "medium",
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export async function scanWorkspace(): Promise<CodeTask[]> {
   const tasks: CodeTask[] = [];
+
+  const taskOccurrences = new Map<string, number>();
 
   const files = await vscode.workspace.findFiles(
     "**/*",
@@ -43,16 +76,15 @@ export async function scanWorkspace(): Promise<CodeTask[]> {
           return;
         }
 
-        tasks.push({
-          id: `${file.fsPath}:${index + 1}`,
-          type,
-          title: title.trim(),
-          filePath: file.fsPath,
-          line: index,
-          status: "open",
-          priority: "medium",
-          createdAt: new Date().toISOString(),
-        });
+        const occurrenceKey = [file.fsPath, type, title.trim()].join("|");
+
+        const occurrence = (taskOccurrences.get(occurrenceKey) ?? 0) + 1;
+
+        taskOccurrences.set(occurrenceKey, occurrence);
+
+        const taskId = createTaskId(file.fsPath, type, title, occurrence);
+
+        tasks.push(createNewTask(taskId, type, title, file.fsPath, index));
       });
     } catch (error) {
       console.error(`Failed to scan ${file.fsPath}`, error);

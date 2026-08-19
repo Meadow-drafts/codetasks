@@ -7,13 +7,17 @@ import { TaskWorkspaceProvider } from "./webview/taskWorkspace";
 export async function activate(context: vscode.ExtensionContext) {
   console.log("CodeTasks is now active!");
 
-  const taskStore = new TaskStore();
+  const taskStore = new TaskStore(context.workspaceState);
 
-  const tasks = await scanWorkspace();
+  const refreshTasks = async () => {
+    const tasks = await scanWorkspace();
 
-  taskStore.setTasks(tasks);
+    await taskStore.setTasks(tasks);
 
-  console.log(`CodeTasks found ${taskStore.getTaskCount()} task(s).`);
+    console.log(`CodeTasks found ${taskStore.getTaskCount()} task(s).`);
+  };
+
+  await refreshTasks();
 
   const taskTreeProvider = new TaskTreeProvider(taskStore);
 
@@ -88,12 +92,25 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      taskStore.updateTaskStatus(task.id, status.value);
+      const updated = await taskStore.updateTaskStatus(task.id, status.value);
+
+      if (!updated) {
+        return;
+      }
 
       taskTreeProvider.refresh();
     },
   );
+  const refreshTasksCommand = vscode.commands.registerCommand(
+    "codetasks.refreshTasks",
+    async () => {
+      await refreshTasks();
 
+      vscode.window.showInformationMessage("CodeTasks refreshed.");
+    },
+  );
+
+  context.subscriptions.push(refreshTasksCommand);
   context.subscriptions.push(updateTaskStatusCommand);
 
   context.subscriptions.push(openTaskCommand);

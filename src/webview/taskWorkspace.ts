@@ -8,31 +8,49 @@ export class TaskWorkspaceProvider {
     private readonly taskStore: TaskStore,
   ) {}
 
-  private formatStatus(
-	status: CodeTask["status"]
-): string {
-	switch (status) {
-		case "open":
-			return "Open";
+  private formatStatus(status: CodeTask["status"]): string {
+    switch (status) {
+      case "open":
+        return "Open";
 
-		case "in-progress":
-			return "In Progress";
+      case "in-progress":
+        return "In Progress";
 
-		case "blocked":
-			return "Blocked";
+      case "blocked":
+        return "Blocked";
 
-		case "review":
-			return "Review";
+      case "review":
+        return "Review";
 
-		case "done":
-			return "Done";
+      case "done":
+        return "Done";
 
-		default:
-			return status;
-	}
-}
+      default:
+        return status;
+    }
+  }
+  private formatPriority(priority: CodeTask["priority"]): string {
+    switch (priority) {
+      case "low":
+        return "Low";
+
+      case "medium":
+        return "Medium";
+
+      case "high":
+        return "High";
+
+      case "critical":
+        return "Critical";
+
+      default:
+        return priority;
+    }
+  }
 
   open(): void {
+    let currentView: "table" | "kanban" = "table";
+
     const panel = vscode.window.createWebviewPanel(
       "codetasks.workspace",
       "CodeTasks",
@@ -42,10 +60,21 @@ export class TaskWorkspaceProvider {
       },
     );
 
+    const storeChangeSubscription = this.taskStore.onDidChange(() => {
+      panel.webview.html = this.getHtml(currentView);
+    });
+
+    panel.onDidDispose(() => {
+      storeChangeSubscription.dispose();
+    });
+
     panel.webview.onDidReceiveMessage(
       async (message) => {
         console.log("CodeTasks Webview message:", message);
-
+        if (message.command === "setView") {
+          currentView = message.view;
+          return;
+        }
         if (message.command === "openTask") {
           const task = this.taskStore
             .getTasks()
@@ -75,70 +104,140 @@ export class TaskWorkspaceProvider {
           return;
         }
 
-  if (message.command === "updateStatus") {
-	const updated =
-		this.taskStore.updateTaskStatus(
-			message.taskId,
-			message.status
-		);
+        if (message.command === "updateStatus") {
+          const updated = await this.taskStore.updateTaskStatus(
+            message.taskId,
+            message.status,
+          );
 
-	if (!updated) {
-	vscode.window.showErrorMessage(
-		"CodeTasks: Could not update task status."
-	);
+          if (!updated) {
+            vscode.window.showErrorMessage(
+              "CodeTasks: Could not update task status.",
+            );
 
-	panel.webview.postMessage({
-		command: "statusUpdateFailed",
-		taskId: message.taskId,
-	});
+            panel.webview.postMessage({
+              command: "statusUpdateFailed",
+              taskId: message.taskId,
+            });
 
-	return;
-}
+            return;
+          }
 
-	const task = this.taskStore
-		.getTasks()
-		.find(
-			(task) =>
-				task.id === message.taskId
-		);
+          const task = this.taskStore
+            .getTasks()
+            .find((task) => task.id === message.taskId);
 
-	if (!task) {
-		return;
-	}
+          if (!task) {
+            return;
+          }
 
-	vscode.window.showInformationMessage(
-		`Task "${task.title}" marked as ${this.formatStatus(task.status)}.`
-	);
+          vscode.window.showInformationMessage(
+            `Task "${task.title}" marked as ${this.formatStatus(task.status)}.`,
+          );
 
-	panel.webview.postMessage({
-		command: "statusUpdated",
-		taskId: task.id,
-		status: task.status,
-	});
+          panel.webview.postMessage({
+            command: "statusUpdated",
+            taskId: task.id,
+            status: task.status,
+          });
 
-	return;
-}
+          return;
+        }
+        if (message.command === "updatePriority") {
+          const updated = await this.taskStore.updateTaskPriority(
+            message.taskId,
+            message.priority,
+          );
+
+          if (!updated) {
+            vscode.window.showErrorMessage(
+              "CodeTasks: Could not update task priority.",
+            );
+
+            panel.webview.postMessage({
+              command: "priorityUpdateFailed",
+              taskId: message.taskId,
+            });
+
+            return;
+          }
+
+          const task = this.taskStore
+            .getTasks()
+            .find((task) => task.id === message.taskId);
+
+          if (!task) {
+            return;
+          }
+
+          vscode.window.showInformationMessage(
+            `Task "${task.title}" priority updated to ${this.formatPriority(task.priority)}.`,
+          );
+
+          panel.webview.postMessage({
+            command: "priorityUpdated",
+            taskId: task.id,
+            priority: task.priority,
+          });
+
+          return;
+        }
+        if (message.command === "refreshTasks") {
+          await vscode.commands.executeCommand("codetasks.refreshTasks");
+
+          panel.webview.postMessage({
+            command: "tasksRefreshed",
+          });
+
+          return;
+        }
       },
       undefined,
       [],
     );
 
-    panel.webview.html = this.getHtml();
+    panel.webview.html = this.getHtml(currentView);
   }
 
-  private getHtml(): string {
+  private getHtml(
+    currentView: "table" | "kanban" = "table",
+): string {
     const tasks = this.taskStore.getTasks();
+    const statusCounts = {
+      open: tasks.filter((task) => task.status === "open").length,
 
+      "in-progress": tasks.filter((task) => task.status === "in-progress")
+        .length,
+
+      blocked: tasks.filter((task) => task.status === "blocked").length,
+
+      review: tasks.filter((task) => task.status === "review").length,
+
+      done: tasks.filter((task) => task.status === "done").length,
+    };
+
+    const priorityCounts = {
+      low: tasks.filter((task) => task.priority === "low").length,
+
+      medium: tasks.filter((task) => task.priority === "medium").length,
+
+      high: tasks.filter((task) => task.priority === "high").length,
+
+      critical: tasks.filter((task) => task.priority === "critical").length,
+    };
     const rows = tasks
       .map(
         (task) => `
 			<tr
-				class="task-row"
-				data-task-id="${this.escapeHtml(task.id)}"
-				data-title="${this.escapeHtml(task.title.toLowerCase())}"
-				data-type="${task.type}"
-				data-status="${task.status}"
-			>
+    class="task-row"
+    data-task-id="${this.escapeHtml(task.id)}"
+    data-title="${this.escapeHtml(task.title.toLowerCase())}"
+    data-status="${task.status}"
+    data-type="${task.type}"
+    data-priority="${task.priority}"
+	data-created-at="${this.escapeHtml(task.createdAt)}"
+data-updated-at="${this.escapeHtml(task.updatedAt)}"
+>
 				<td>
 					${this.escapeHtml(task.title)}
 				</td>
@@ -148,46 +247,81 @@ export class TaskWorkspaceProvider {
 				</td>
 
 				<td>
-	<select
-	class="status-select"
-	data-task-id="${this.escapeHtml(task.id)}"
-	data-current-status="${task.status}"
->
-		<option
-			value="open"
-			${task.status === "open" ? "selected" : ""}
-		>
-			Open
-		</option>
+				<select
+				class="status-select"
+				data-task-id="${this.escapeHtml(task.id)}"
+				data-current-status="${task.status}"
+			>
+					<option
+						value="open"
+						${task.status === "open" ? "selected" : ""}
+					>
+						Open
+					</option>
 
-		<option
-			value="in-progress"
-			${task.status === "in-progress" ? "selected" : ""}
-		>
-			In Progress
-		</option>
+					<option
+						value="in-progress"
+						${task.status === "in-progress" ? "selected" : ""}
+					>
+						In Progress
+					</option>
 
-		<option
-			value="blocked"
-			${task.status === "blocked" ? "selected" : ""}
-		>
-			Blocked
-		</option>
+					<option
+						value="blocked"
+						${task.status === "blocked" ? "selected" : ""}
+					>
+						Blocked
+					</option>
 
-		<option
-			value="review"
-			${task.status === "review" ? "selected" : ""}
-		>
-			Review
-		</option>
+					<option
+						value="review"
+						${task.status === "review" ? "selected" : ""}
+					>
+						Review
+					</option>
 
-		<option
-			value="done"
-			${task.status === "done" ? "selected" : ""}
-		>
-			Done
-		</option>
-	</select>
+					<option
+						value="done"
+						${task.status === "done" ? "selected" : ""}
+					>
+						Done
+					</option>
+				</select>
+</td>
+<td>
+    <select
+        class="priority-select"
+        data-task-id="${this.escapeHtml(task.id)}"
+        data-current-priority="${task.priority}"
+    >
+        <option
+            value="low"
+            ${task.priority === "low" ? "selected" : ""}
+        >
+            Low
+        </option>
+
+        <option
+            value="medium"
+            ${task.priority === "medium" ? "selected" : ""}
+        >
+            Medium
+        </option>
+
+        <option
+            value="high"
+            ${task.priority === "high" ? "selected" : ""}
+        >
+            High
+        </option>
+
+        <option
+            value="critical"
+            ${task.priority === "critical" ? "selected" : ""}
+        >
+            Critical
+        </option>
+    </select>
 </td>
 
 				<td>
@@ -253,14 +387,14 @@ export class TaskWorkspaceProvider {
 						gap: 8px;
 						margin-bottom: 16px;
 					}
-.status-select {
-	background: var(--vscode-dropdown-background);
-	color: var(--vscode-dropdown-foreground);
-	border: 1px solid var(--vscode-dropdown-border);
-	padding: 4px 8px;
-	border-radius: 3px;
-	cursor: pointer;
-}
+					.status-select {
+						background: var(--vscode-dropdown-background);
+						color: var(--vscode-dropdown-foreground);
+						border: 1px solid var(--vscode-dropdown-border);
+						padding: 4px 8px;
+						border-radius: 3px;
+						cursor: pointer;
+					}
 					input,
 					select {
 						background: var(
@@ -309,17 +443,215 @@ export class TaskWorkspaceProvider {
 							--vscode-list-hoverBackground
 						);
 					}
-						.task-row {
-	cursor: pointer;
-}
+					.task-row {
+						cursor: pointer;
+					}
 
-.task-row:hover {
-	background: var(--vscode-list-hoverBackground);
-}
-	.status-select.updating {
-	opacity: 0.6;
-	cursor: wait;
-}
+					.task-row:hover {
+						background: var(--vscode-list-hoverBackground);
+					}
+						.status-select.updating {
+						opacity: 0.6;
+						cursor: wait;
+					}
+
+					.status-select.updating {
+						opacity: 0.6;
+						cursor: wait;
+					}
+
+					.status-select.updating,
+					.priority-select.updating {
+						opacity: 0.6;
+						cursor: wait;
+					}
+
+						.count {
+						display: flex;
+						align-items: center;
+						gap: 6px;
+						color: var(--vscode-descriptionForeground);
+						font-size: 13px;
+					}
+
+					.separator {
+						opacity: 0.5;
+					}
+					.priority-summary {
+						display: flex;
+						align-items: center;
+						gap: 6px;
+						color: var(--vscode-descriptionForeground);
+						font-size: 13px;
+						margin-left: 16px;
+					}
+						.refresh-button {
+						background: var(--vscode-button-secondaryBackground);
+						color: var(--vscode-button-secondaryForeground);
+						border: none;
+						padding: 6px 10px;
+						border-radius: 4px;
+						cursor: pointer;
+					}
+
+					.refresh-button:hover {
+						background: var(--vscode-button-secondaryHoverBackground);
+					}
+						.view-toggle {
+						display: flex;
+						gap: 4px;
+					}
+
+					.view-button {
+						background: transparent;
+						color: var(--vscode-foreground);
+						border: 1px solid var(--vscode-panel-border);
+						padding: 6px 10px;
+						cursor: pointer;
+					}
+
+					.view-button:hover {
+						background: var(--vscode-list-hoverBackground);
+					}
+
+					.view-button.active {
+						background: var(--vscode-button-background);
+						color: var(--vscode-button-foreground);
+					}
+
+
+					.kanban-view {
+						width: 100%;
+						overflow-x: auto;
+					}
+
+
+					.kanban-board {
+						display: grid;
+						grid-template-columns:
+							repeat(5, minmax(220px, 1fr));
+
+						gap: 12px;
+
+						min-width: 1100px;
+					}
+
+
+					.kanban-column {
+						background:
+							var(--vscode-sideBar-background);
+
+						border:
+							1px solid
+							var(--vscode-panel-border);
+
+						border-radius: 6px;
+
+						min-height: 400px;
+					}
+
+
+					.kanban-column-header {
+						display: flex;
+
+						justify-content:
+							space-between;
+
+						align-items: center;
+
+						padding: 10px 12px;
+
+						font-weight: 600;
+
+						border-bottom:
+							1px solid
+							var(--vscode-panel-border);
+					}
+
+
+					.kanban-count {
+						color:
+							var(--vscode-descriptionForeground);
+
+						font-size: 12px;
+					}
+
+
+					.kanban-cards {
+						display: flex;
+
+						flex-direction: column;
+
+						gap: 8px;
+
+						padding: 8px;
+					}
+
+
+					.kanban-card {
+						background:
+							var(--vscode-editor-background);
+
+						border:
+							1px solid
+							var(--vscode-panel-border);
+
+						border-radius: 5px;
+
+						padding: 10px;
+
+						cursor: pointer;
+					}
+
+
+					.kanban-card:hover {
+						background:
+							var(--vscode-list-hoverBackground);
+					}
+
+
+					.kanban-card-title {
+						font-weight: 500;
+
+						margin-bottom: 8px;
+					}
+
+
+					.kanban-card-meta {
+						display: flex;
+
+						justify-content:
+							space-between;
+
+						font-size: 12px;
+
+						color:
+							var(--vscode-descriptionForeground);
+					}
+
+
+					.kanban-empty {
+						color:
+							var(--vscode-descriptionForeground);
+
+						text-align: center;
+
+						padding: 20px 10px;
+
+						font-size: 12px;
+					}
+						.kanban-card.dragging {
+						opacity: 0.5;
+					}
+
+
+					.kanban-column.drag-over {
+						border-color:
+							var(--vscode-focusBorder);
+
+						background:
+							var(--vscode-list-hoverBackground);
+					}
 				</style>
 			</head>
 	  	
@@ -329,320 +661,1507 @@ export class TaskWorkspaceProvider {
 					<div class="title">
 						All Tasks
 					</div>
+					 <div class="view-toggle">
+
+						<button
+							id="table-view-button"
+							class="view-button ${
+							currentView === "table"
+								? "active"
+								: ""
+						}"
+						>
+							☷ Table
+						</button>
+
+						<button
+							id="kanban-view-button"
+						class="view-button ${
+								currentView === "kanban"
+									? "active"
+									: ""
+							}"
+						>
+							▦ Kanban
+						</button>
+
+					</div>
 
 					<div class="count">
-						${tasks.length} tasks
+						<span>
+							${tasks.length} tasks
+						</span>
+
+						<span class="separator">·</span>
+
+						<span>
+							${statusCounts.open} open
+						</span>
+
+						<span class="separator">·</span>
+
+						<span>
+							${statusCounts["in-progress"]} in progress
+						</span>
+
+						<span class="separator">·</span>
+
+						<span>
+							${statusCounts.blocked} blocked
+						</span>
+
+						<span class="separator">·</span>
+
+						<span>
+							${statusCounts.review} review
+						</span>
+
+						<span class="separator">·</span>
+
+						<span>
+							${statusCounts.done} done
+						</span>
 					</div>
+					<div class="priority-summary">
+
+						<span>
+							${priorityCounts.critical} critical
+						</span>
+
+						<span>
+							${priorityCounts.high} high
+						</span>
+
+					</div>
+
+
+					<button
+							id="refresh-tasks"
+							class="refresh-button"
+							title="Refresh tasks"
+						>
+							↻ Refresh
+						</button>
 				</div>
 
 				<div class="toolbar">
 
 					<input
-    id="task-search"
-    type="search"
-    placeholder="Search tasks..."
-/>
+						id="task-search"
+						type="search"
+						placeholder="Search tasks..."
+					/>
 			
-<select id="status-filter">
-	<option value="all" selected>
-		Show All
-	</option>
+					<select id="status-filter">
+						<option value="all" selected>
+							Show All
+						</option>
 
-	<option value="open">
-		Open
-	</option>
+						<option value="open">
+							Open
+						</option>
 
-	<option value="in-progress">
-		In Progress
-	</option>
+						<option value="in-progress">
+							In Progress
+						</option>
 
-	<option value="blocked">
-		Blocked
-	</option>
+						<option value="blocked">
+							Blocked
+						</option>
 
-	<option value="review">
-		Review
-	</option>
+						<option value="review">
+							Review
+						</option>
 
-	<option value="done">
-		Done
-	</option>
-</select>
+						<option value="done">
+							Done
+						</option>
+					</select>
 
 					<select id="type-filter">
-    <option value="all">All types</option>
-    <option value="TODO">TODO</option>
-    <option value="FIXME">FIXME</option>
-    <option value="BUG">BUG</option>
-    <option value="HACK">HACK</option>
-    <option value="REFACTOR">REFACTOR</option>
-</select>
+						<option value="all">All types</option>
+						<option value="TODO">TODO</option>
+						<option value="FIXME">FIXME</option>
+						<option value="BUG">BUG</option>
+						<option value="HACK">HACK</option>
+						<option value="REFACTOR">REFACTOR</option>
+					</select>
+					<select id="priority-filter">
+
+						<option value="all">
+							All priorities
+						</option>
+
+						<option value="low">
+							Low
+						</option>
+
+						<option value="medium">
+							Medium
+						</option>
+
+						<option value="high">
+							High
+						</option>
+
+						<option value="critical">
+							Critical
+						</option>
+
+					</select>
+					<select id="sort-filter">
+
+						<option value="updated-desc">
+							Recently updated
+						</option>
+
+						<option value="updated-asc">
+							Least recently updated
+						</option>
+
+						<option value="created-desc">
+							Recently created
+						</option>
+
+						<option value="created-asc">
+							Oldest created
+						</option>
+
+						<option value="priority-desc">
+							Highest priority
+						</option>
+
+						<option value="priority-asc">
+							Lowest priority
+						</option>
+
+						<option value="title-asc">
+							Task name A–Z
+						</option>
+
+						<option value="title-desc">
+							Task name Z–A
+						</option>
+
+					</select>
 
 				</div>
+				<div id="table-view"
+					style="display: ${
+						currentView === "table"
+							? "block"
+							: "none"
+					};"
+					>
+					<table>
+						<thead>						
+							<tr>
+								<th>Task</th>
+								<th>Type</th>
+								<th>Status</th>
+								<th>Priority</th>
+								<th>Location</th>
+							</tr>
+						</thead>
+						<tbody>
+							${rows}
+						</tbody>
+
+					</table>
+				</div>
+				<div
+					id="kanban-view"
+					class="kanban-view"
+					style="display: ${
+						currentView === "kanban"
+							? "block"
+							: "none"
+					};"
+				>
+					<div class="kanban-board">
+						<div
+							class="kanban-column"
+							data-status="open"
+						>
+							<div class="kanban-column-header">
+								<span>Open</span>
+								<span class="kanban-count">0</span>
+							</div>
+							<div class="kanban-cards"></div>
+						</div>
+						<div
+							class="kanban-column"
+							data-status="in-progress"
+						>
+							<div class="kanban-column-header">
+								<span>In Progress</span>
+								<span class="kanban-count">0</span>
+							</div>
+
+							<div class="kanban-cards"></div>
+						</div>
+						<div
+							class="kanban-column"
+							data-status="blocked"
+						>
+							<div class="kanban-column-header">
+								<span>Blocked</span>
+								<span class="kanban-count">0</span>
+							</div>
+
+							<div class="kanban-cards"></div>
+						</div>
+						<div
+							class="kanban-column"
+							data-status="review"
+						>
+							<div class="kanban-column-header">
+								<span>Review</span>
+								<span class="kanban-count">0</span>
+							</div>
+
+							<div class="kanban-cards"></div>
+						</div>
+						<div
+							class="kanban-column"
+							data-status="done"
+						>
+							<div class="kanban-column-header">
+								<span>Done</span>
+								<span class="kanban-count">0</span>
+							</div>
+
+							<div class="kanban-cards"></div>
+						</div>
+					</div>
+				</div>	
+			<script>
+				const vscode = acquireVsCodeApi();
+
+
+				/*
+				* ============================================================
+				* KANBAN
+				* ============================================================
+				*/
+
+				function renderKanban() {
+
+					const columns =
+						document.querySelectorAll(
+							".kanban-column"
+						);
 
-				<table>
+					columns.forEach((column) => {
 
-					<thead>
-						<tr>
-							<th>Task</th>
-							<th>Type</th>
-							<th>Status</th>
-							<th>Location</th>
-						</tr>
-					</thead>
+						const status =
+							column.dataset.status;
 
-					<tbody>
-						${rows}
-					</tbody>
+						const cardsContainer =
+							column.querySelector(
+								".kanban-cards"
+							);
 
-				</table>
-				<script>
-    const vscode = acquireVsCodeApi();
+						const count =
+							column.querySelector(
+								".kanban-count"
+							);
 
-    const searchInput =
-        document.getElementById('task-search');
+						if (!cardsContainer || !count) {
+							return;
+						}
 
-    const statusFilter =
-        document.getElementById('status-filter');
+						cardsContainer.innerHTML = "";
 
-    const typeFilter =
-        document.getElementById('type-filter');
+						const rows =
+							Array.from(
+								document.querySelectorAll(
+									".task-row"
+								)
+							);
 
-    const rows =
-        document.querySelectorAll('.task-row');
+						const matchingRows =
+							rows.filter((row) => {
 
+								return (
+									row.dataset.status ===
+									status &&
+									row.style.display !== "none"
+								);
 
-    function filterTasks() {
+							});
 
-        const search =
-            searchInput.value
-                .trim()
-                .toLowerCase();
+						count.textContent =
+							String(
+								matchingRows.length
+							);
 
-        const selectedStatus =
-            statusFilter.value;
 
-        const selectedType =
-            typeFilter.value;
+						if (matchingRows.length === 0) {
 
+							cardsContainer.innerHTML =
+								'<div class="kanban-empty">' +
+									'No tasks' +
+								'</div>';
 
-        rows.forEach((row) => {
+							return;
+						}
 
-            const title =
-                row.dataset.title || '';
 
-            const status =
-                row.dataset.status || '';
+						matchingRows.forEach((row) => {
 
-            const type =
-                row.dataset.type || '';
+							const taskId =
+								row.dataset.taskId || "";
 
+							const title =
+								row.dataset.title || "";
 
-            const matchesSearch =
-                !search ||
-                title.includes(search);
+							const type =
+								row.dataset.type || "";
 
+							const priority =
+								row.dataset.priority || "";
 
-            const matchesStatus =
-                selectedStatus === 'all' ||
-                status === selectedStatus;
 
+							const card =
+								document.createElement(
+									"div"
+								);
 
-            const matchesType =
-                selectedType === 'all' ||
-                type === selectedType;
+							card.className =
+								"kanban-card";
 
+							card.draggable = true;
 
-            const visible =
-                matchesSearch &&
-                matchesStatus &&
-                matchesType;
+							card.dataset.taskId =
+								taskId;
 
 
-            row.style.display =
-                visible ? '' : 'none';
-        });
-    }
+							/*
+							* Prevent a drag operation from
+							* accidentally triggering the
+							* card click afterwards.
+							*/
+							let wasDragging = false;
 
 
-    searchInput.addEventListener(
-        'input',
-        filterTasks
-    );
+							/*
+							* DRAG START
+							*/
+							card.addEventListener(
+								"dragstart",
+								(event) => {
 
+									wasDragging = true;
 
-    statusFilter.addEventListener(
-        'change',
-        filterTasks
-    );
+									event.dataTransfer.setData(
+										"text/plain",
+										taskId
+									);
 
+									card.classList.add(
+										"dragging"
+									);
+								}
+							);
 
-    typeFilter.addEventListener(
-        'change',
-        filterTasks
-    );
 
+							/*
+							* DRAG END
+							*/
+							card.addEventListener(
+								"dragend",
+								() => {
 
-    // Open task source location when
-    // clicking anywhere on the task row.
-    rows.forEach((row) => {
+									card.classList.remove(
+										"dragging"
+									);
 
-        row.addEventListener(
-            'click',
-            () => {
+									setTimeout(() => {
 
-                const taskId =
-                    row.dataset.taskId;
+										wasDragging =
+											false;
 
-                console.log(
-                    'Clicked task:',
-                    taskId
-                );
+									}, 0);
+								}
+							);
 
-                vscode.postMessage({
-                    command: 'openTask',
-                    taskId: taskId,
-                });
-            }
-        );
 
-    });
+							/*
+							* CARD CONTENT
+							*/
+							card.innerHTML =
+								'<div class="kanban-card-title">' +
+									title +
+								'</div>' +
 
+								'<div class="kanban-card-meta">' +
+									'<span>' +
+										type +
+									'</span>' +
 
-    // Handle status dropdown changes.
-    const statusSelects =
-        document.querySelectorAll('.status-select');
+									'<span>' +
+										priority +
+									'</span>' +
 
-    statusSelects.forEach((select) => {
+								'</div>';
 
-        // Prevent clicking the dropdown
-        // from triggering the row click.
-        select.addEventListener(
-            'click',
-            (event) => {
-                event.stopPropagation();
-            }
-        );
 
+							/*
+							* CLICK CARD
+							*
+							* Only open the source file
+							* if the card wasn't dragged.
+							*/
+							card.addEventListener(
+								"click",
+								() => {
 
-       select.addEventListener(
-	'change',
-	() => {
+									if (wasDragging) {
+										return;
+									}
 
-		const taskId =
-			select.dataset.taskId;
+									vscode.postMessage({
+										command: "openTask",
+										taskId: taskId,
+									});
+								}
+							);
 
-		const newStatus =
-			select.value;
 
-		const previousStatus =
-			select.dataset.currentStatus;
+							cardsContainer.appendChild(
+								card
+							);
+						});
+					});
+				}
 
-		select.dataset.previousStatus =
-			previousStatus;
 
-		select.classList.add('updating');
+				/*
+				* ============================================================
+				* KANBAN DRAG & DROP
+				* ============================================================
+				*/
 
-		select.disabled = true;
+				const kanbanColumns =
+					document.querySelectorAll(
+						".kanban-column"
+					);
 
-		vscode.postMessage({
-			command: 'updateStatus',
-			taskId,
-			status: newStatus,
-		});
-	}
-);
 
-    });
+				kanbanColumns.forEach((column) => {
 
+					/*
+					* Allow cards to be dragged over
+					* the column.
+					*/
+					column.addEventListener(
+						"dragover",
+						(event) => {
 
-    // Listen for messages coming back
-    // from the VS Code extension host.
-    window.addEventListener(
-	'message',
-	(event) => {
+							event.preventDefault();
 
-		const message =
-			event.data;
+							column.classList.add(
+								"drag-over"
+							);
+						}
+					);
 
 
-		const select =
-			document.querySelector(
-				'.status-select[data-task-id="' +
-				message.taskId +
-				'"]'
-			);
+					/*
+					* Remove visual drag state.
+					*/
+					column.addEventListener(
+						"dragleave",
+						() => {
 
+							column.classList.remove(
+								"drag-over"
+							);
+						}
+					);
 
-		if (!select) {
-			return;
-		}
 
+					/*
+					* Handle dropped cards.
+					*/
+					column.addEventListener(
+						"drop",
+						(event) => {
 
-		// Successful update
-		if (
-    message.command ===
-    'statusUpdated'
-) {
+							event.preventDefault();
 
-    // Update the dropdown
-    select.value =
-        message.status;
+							column.classList.remove(
+								"drag-over"
+							);
 
-    select.dataset.currentStatus =
-        message.status;
 
+							const taskId =
+								event.dataTransfer.getData(
+									"text/plain"
+								);
 
-    // Update the row's status
-    const row =
-        select.closest('.task-row');
 
-    if (row) {
-        row.dataset.status =
-            message.status;
-    }
+							const newStatus =
+								column.dataset.status;
 
 
-    // Stop loading state
-    select.classList.remove(
-        'updating'
-    );
+							if (
+								!taskId ||
+								!newStatus
+							) {
+								return;
+							}
 
-    select.disabled = false;
 
+							vscode.postMessage({
+								command:
+									"updateStatus",
 
-    // Re-run filters using the
-    // updated task status
-    filterTasks();
+								taskId:
+									taskId,
 
-    return;
-}
+								status:
+									newStatus,
+							});
+						}
+					);
+				});
 
 
-		// Failed update
-		if (
-			message.command ===
-			'statusUpdateFailed'
-		) {
+				/*
+				* ============================================================
+				* VIEW ELEMENTS
+				* ============================================================
+				*/
 
-			select.value =
-				select.dataset.previousStatus;
+				const tableView =
+					document.getElementById(
+						"table-view"
+					);
 
-			select.classList.remove(
-				'updating'
-			);
 
-			select.disabled = false;
+				const kanbanView =
+					document.getElementById(
+						"kanban-view"
+					);
 
-			return;
-		}
-	}
-);
 
-</script>
+				const tableViewButton =
+					document.getElementById(
+						"table-view-button"
+					);
+
+
+				const kanbanViewButton =
+					document.getElementById(
+						"kanban-view-button"
+					);
+
+
+				/*
+				* ============================================================
+				* VIEW SWITCHING
+				* ============================================================
+				*/
+
+				tableViewButton.addEventListener(
+					"click",
+					() => {
+
+						tableView.style.display =
+							"";
+
+						kanbanView.style.display =
+							"none";
+
+
+						tableViewButton.classList.add(
+							"active"
+						);
+
+						kanbanViewButton.classList.remove(
+							"active"
+						);
+
+
+						vscode.postMessage({
+							command:
+								"setView",
+
+							view:
+								"table",
+						});
+					}
+				);
+
+
+				kanbanViewButton.addEventListener(
+					"click",
+					() => {
+
+						tableView.style.display =
+							"none";
+
+						kanbanView.style.display =
+							"";
+
+
+						tableViewButton.classList.remove(
+							"active"
+						);
+
+						kanbanViewButton.classList.add(
+							"active"
+						);
+
+
+						renderKanban();
+
+
+						vscode.postMessage({
+							command:
+								"setView",
+
+							view:
+								"kanban",
+						});
+					}
+				);
+
+
+				/*
+				* ============================================================
+				* FILTERS / SEARCH / SORT
+				* ============================================================
+				*/
+
+				const searchInput =
+					document.getElementById(
+						"task-search"
+					);
+
+
+				const statusFilter =
+					document.getElementById(
+						"status-filter"
+					);
+
+
+				const typeFilter =
+					document.getElementById(
+						"type-filter"
+					);
+
+
+				const priorityFilter =
+					document.getElementById(
+						"priority-filter"
+					);
+
+
+				const sortFilter =
+					document.getElementById(
+						"sort-filter"
+					);
+
+
+				const rows =
+					document.querySelectorAll(
+						".task-row"
+					);
+
+
+				/*
+				* ============================================================
+				* REFRESH
+				* ============================================================
+				*/
+
+				const refreshButton =
+					document.getElementById(
+						"refresh-tasks"
+					);
+
+
+				/*
+				* The table body is needed for sorting.
+				*/
+				const tableBody =
+					document.querySelector(
+						"tbody"
+					);
+
+
+				refreshButton.addEventListener(
+					"click",
+					() => {
+
+						refreshButton.disabled =
+							true;
+
+						refreshButton.textContent =
+							"Refreshing...";
+
+
+						vscode.postMessage({
+							command:
+								"refreshTasks",
+						});
+					}
+				);
+
+
+				/*
+				* ============================================================
+				* FILTER TASKS
+				* ============================================================
+				*/
+
+				function filterTasks() {
+
+					const search =
+						searchInput.value
+							.trim()
+							.toLowerCase();
+
+
+					const selectedStatus =
+						statusFilter.value;
+
+
+					const selectedType =
+						typeFilter.value;
+
+
+					const selectedPriority =
+						priorityFilter.value;
+
+
+					const selectedSort =
+						sortFilter.value;
+
+
+					const rowsArray =
+						Array.from(
+							document.querySelectorAll(
+								".task-row"
+							)
+						);
+
+
+					rowsArray.forEach((row) => {
+
+						const title =
+							row.dataset.title || "";
+
+
+						const status =
+							row.dataset.status || "";
+
+
+						const type =
+							row.dataset.type || "";
+
+
+						const priority =
+							row.dataset.priority || "";
+
+
+						const matchesSearch =
+							!search ||
+							title.includes(
+								search
+							);
+
+
+						const matchesStatus =
+							selectedStatus === "all" ||
+							status ===
+								selectedStatus;
+
+
+						const matchesType =
+							selectedType === "all" ||
+							type ===
+								selectedType;
+
+
+						const matchesPriority =
+							selectedPriority === "all" ||
+							priority ===
+								selectedPriority;
+
+
+						const visible =
+							matchesSearch &&
+							matchesStatus &&
+							matchesType &&
+							matchesPriority;
+
+
+						row.style.display =
+							visible
+								? ""
+								: "none";
+					});
+
+
+					sortRows(
+						rowsArray,
+						selectedSort
+					);
+
+
+					/*
+					* Keep Kanban synchronized
+					* with filters.
+					*/
+					if (
+						kanbanView.style.display !==
+						"none"
+					) {
+						renderKanban();
+					}
+				}
+
+
+				/*
+				* ============================================================
+				* SORTING
+				* ============================================================
+				*/
+
+				function sortRows(
+					rows,
+					sortType
+				) {
+
+					if (!tableBody) {
+						return;
+					}
+
+
+					const priorityOrder = {
+						low: 1,
+						medium: 2,
+						high: 3,
+						critical: 4,
+					};
+
+
+					rows.sort((a, b) => {
+
+						switch (sortType) {
+
+							case "updated-desc":
+
+								return compareDates(
+									b.dataset.updatedAt,
+									a.dataset.updatedAt
+								);
+
+
+							case "updated-asc":
+
+								return compareDates(
+									a.dataset.updatedAt,
+									b.dataset.updatedAt
+								);
+
+
+							case "created-desc":
+
+								return compareDates(
+									b.dataset.createdAt,
+									a.dataset.createdAt
+								);
+
+
+							case "created-asc":
+
+								return compareDates(
+									a.dataset.createdAt,
+									b.dataset.createdAt
+								);
+
+
+							case "priority-desc":
+
+								return (
+									priorityOrder[
+										b.dataset.priority
+									] -
+									priorityOrder[
+										a.dataset.priority
+									]
+								);
+
+
+							case "priority-asc":
+
+								return (
+									priorityOrder[
+										a.dataset.priority
+									] -
+									priorityOrder[
+										b.dataset.priority
+									]
+								);
+
+
+							case "title-asc":
+
+								return (
+									a.dataset.title || ""
+								).localeCompare(
+									b.dataset.title || ""
+								);
+
+
+							case "title-desc":
+
+								return (
+									b.dataset.title || ""
+								).localeCompare(
+									a.dataset.title || ""
+								);
+
+
+							default:
+
+								return 0;
+						}
+					});
+
+
+					rows.forEach((row) => {
+
+						tableBody.appendChild(
+							row
+						);
+					});
+				}
+
+
+				function compareDates(
+					a,
+					b
+				) {
+
+					return (
+						new Date(a).getTime() -
+						new Date(b).getTime()
+					);
+				}
+
+
+				/*
+				* ============================================================
+				* FILTER EVENT LISTENERS
+				* ============================================================
+				*/
+
+				searchInput.addEventListener(
+					"input",
+					filterTasks
+				);
+
+
+				statusFilter.addEventListener(
+					"change",
+					filterTasks
+				);
+
+
+				typeFilter.addEventListener(
+					"change",
+					filterTasks
+				);
+
+
+				priorityFilter.addEventListener(
+					"change",
+					filterTasks
+				);
+
+
+				sortFilter.addEventListener(
+					"change",
+					filterTasks
+				);
+
+
+				/*
+				* ============================================================
+				* TABLE ROW CLICK
+				* ============================================================
+				*/
+
+				rows.forEach((row) => {
+
+					row.addEventListener(
+						"click",
+						() => {
+
+							const taskId =
+								row.dataset.taskId;
+
+
+							console.log(
+								"Clicked task:",
+								taskId
+							);
+
+
+							vscode.postMessage({
+								command:
+									"openTask",
+
+								taskId:
+									taskId,
+							});
+						}
+					);
+				});
+
+
+				/*
+				* ============================================================
+				* STATUS DROPDOWNS
+				* ============================================================
+				*/
+
+				const statusSelects =
+					document.querySelectorAll(
+						".status-select"
+					);
+
+
+				statusSelects.forEach((select) => {
+
+					/*
+					* Prevent dropdown click from
+					* opening the task.
+					*/
+					select.addEventListener(
+						"click",
+						(event) => {
+
+							event.stopPropagation();
+						}
+					);
+
+
+					select.addEventListener(
+						"change",
+						() => {
+
+							const taskId =
+								select.dataset.taskId;
+
+
+							const newStatus =
+								select.value;
+
+
+							const previousStatus =
+								select.dataset.currentStatus;
+
+
+							select.dataset.previousStatus =
+								previousStatus;
+
+
+							/*
+							* Loading state.
+							*/
+							select.classList.add(
+								"updating"
+							);
+
+							select.disabled =
+								true;
+
+
+							vscode.postMessage({
+								command:
+									"updateStatus",
+
+								taskId:
+									taskId,
+
+								status:
+									newStatus,
+							});
+						}
+					);
+				});
+
+
+				/*
+				* ============================================================
+				* PRIORITY DROPDOWNS
+				* ============================================================
+				*/
+
+				const prioritySelects =
+					document.querySelectorAll(
+						".priority-select"
+					);
+
+
+				prioritySelects.forEach((select) => {
+
+					/*
+					* Prevent dropdown click from
+					* opening the task.
+					*/
+					select.addEventListener(
+						"click",
+						(event) => {
+
+							event.stopPropagation();
+						}
+					);
+
+
+					select.addEventListener(
+						"change",
+						() => {
+
+							const taskId =
+								select.dataset.taskId;
+
+
+							const newPriority =
+								select.value;
+
+
+							const previousPriority =
+								select.dataset.currentPriority;
+
+
+							select.dataset.previousPriority =
+								previousPriority;
+
+
+							/*
+							* Loading state.
+							*/
+							select.classList.add(
+								"updating"
+							);
+
+							select.disabled =
+								true;
+
+
+							vscode.postMessage({
+								command:
+									"updatePriority",
+
+								taskId:
+									taskId,
+
+								priority:
+									newPriority,
+							});
+						}
+					);
+				});
+
+
+				/*
+				* ============================================================
+				* MESSAGES FROM EXTENSION HOST
+				* ============================================================
+				*/
+
+				window.addEventListener(
+					"message",
+					(event) => {
+
+						const message =
+							event.data;
+
+
+						/*
+						* ----------------------------------------------------
+						* TASKS REFRESHED
+						* ----------------------------------------------------
+						*/
+
+						if (
+							message.command ===
+							"tasksRefreshed"
+						) {
+
+							refreshButton.disabled =
+								false;
+
+							refreshButton.textContent =
+								"↻ Refresh";
+
+							return;
+						}
+
+
+						/*
+						* ----------------------------------------------------
+						* STATUS UPDATED
+						* ----------------------------------------------------
+						*/
+
+						if (
+							message.command ===
+							"statusUpdated"
+						) {
+
+							const select =
+								document.querySelector(
+									'.status-select[data-task-id="' +
+									message.taskId +
+									'"]'
+								);
+
+
+							if (!select) {
+								return;
+							}
+
+
+							select.value =
+								message.status;
+
+
+							select.dataset.currentStatus =
+								message.status;
+
+
+							const row =
+								select.closest(
+									".task-row"
+								);
+
+
+							if (row) {
+
+								row.dataset.status =
+									message.status;
+							}
+
+
+							select.classList.remove(
+								"updating"
+							);
+
+
+							select.disabled =
+								false;
+
+
+							/*
+							* Re-run filters so a task
+							* immediately moves in/out
+							* of the selected status.
+							*/
+							filterTasks();
+
+
+							/*
+							* Keep Kanban synchronized.
+							*/
+							if (
+								kanbanView.style.display !==
+								"none"
+							) {
+								renderKanban();
+							}
+
+
+							return;
+						}
+
+
+						/*
+						* ----------------------------------------------------
+						* STATUS UPDATE FAILED
+						* ----------------------------------------------------
+						*/
+
+						if (
+							message.command ===
+							"statusUpdateFailed"
+						) {
+
+							const select =
+								document.querySelector(
+									'.status-select[data-task-id="' +
+									message.taskId +
+									'"]'
+								);
+
+
+							if (!select) {
+								return;
+							}
+
+
+							select.value =
+								select.dataset.previousStatus;
+
+
+							select.classList.remove(
+								"updating"
+							);
+
+
+							select.disabled =
+								false;
+
+
+							return;
+						}
+
+
+						/*
+						* ----------------------------------------------------
+						* PRIORITY UPDATED
+						* ----------------------------------------------------
+						*/
+
+						if (
+							message.command ===
+							"priorityUpdated"
+						) {
+
+							const select =
+								document.querySelector(
+									'.priority-select[data-task-id="' +
+									message.taskId +
+									'"]'
+								);
+
+
+							if (!select) {
+								return;
+							}
+
+
+							select.value =
+								message.priority;
+
+
+							select.dataset.currentPriority =
+								message.priority;
+
+
+							const row =
+								select.closest(
+									".task-row"
+								);
+
+
+							if (row) {
+
+								row.dataset.priority =
+									message.priority;
+							}
+
+
+							select.classList.remove(
+								"updating"
+							);
+
+
+							select.disabled =
+								false;
+
+
+							filterTasks();
+
+
+							/*
+							* Keep Kanban synchronized.
+							*/
+							if (
+								kanbanView.style.display !==
+								"none"
+							) {
+								renderKanban();
+							}
+
+
+							return;
+						}
+
+
+						/*
+						* ----------------------------------------------------
+						* PRIORITY UPDATE FAILED
+						* ----------------------------------------------------
+						*/
+
+						if (
+							message.command ===
+							"priorityUpdateFailed"
+						) {
+
+							const select =
+								document.querySelector(
+									'.priority-select[data-task-id="' +
+									message.taskId +
+									'"]'
+								);
+
+
+							if (!select) {
+								return;
+							}
+
+
+							select.value =
+								select.dataset.previousPriority;
+
+
+							select.classList.remove(
+								"updating"
+							);
+
+
+							select.disabled =
+								false;
+
+
+							return;
+						}
+					}
+				);
+
+
+				/*
+				* ============================================================
+				* INITIAL KANBAN RENDER
+				* ============================================================
+				*
+				* If the workspace was reopened while
+				* Kanban was the active view, render it
+				* immediately.
+				*/
+
+				if (
+					kanbanView &&
+					kanbanView.style.display !==
+						"none"
+				) {
+
+					renderKanban();
+				}
+
+			</script>		
 		</body>
-
-			</html>
+	</html>
 		`;
   }
 

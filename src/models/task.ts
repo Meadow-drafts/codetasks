@@ -1,3 +1,5 @@
+
+
 export type TaskType =
 	| 'TODO'
 	| 'FIXME'
@@ -31,4 +33,26 @@ export interface CodeTask {
 	priority: TaskPriority;
 
 	createdAt: string;
+}
+
+export interface CodeTask {
+    id: string;
+
+    type: TaskType;
+
+    title: string;
+
+    description?: string;
+
+    filePath: string;
+
+    line: number;
+
+    status: TaskStatus;
+
+    priority: TaskPriority;
+
+    createdAt: string;
+
+    updatedAt: string;
 }
