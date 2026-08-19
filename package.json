@@ -25,6 +25,10 @@
         "title": "CodeTasks: Change Status"
       },
       {
+        "command": "codetasks.openTaskDetails",
+        "title": "CodeTasks: Open Task Details"
+      },
+      {
         "command": "codetasks.markTaskDone",
         "title": "CodeTasks: Mark Task Done"
       },

@@ -6,6 +6,7 @@ import { TaskTreeProvider } from "./providers/taskTreeProvider";
 import { TaskWorkspaceProvider } from "./webview/taskWorkspace";
 import { TaskDetailsProvider } from "./webview/taskDetails";
 import { TaskArchivedProvider } from "./webview/taskArchived";
+import { TaskCodeLensProvider } from "./providers/taskCodeLensProvider";
 
 async function pickTask(
   tasks: CodeTask[],
@@ -64,10 +65,18 @@ export async function activate(context: vscode.ExtensionContext) {
     context.extensionUri,
     taskStore,
   );
+  const taskCodeLensProvider = new TaskCodeLensProvider(taskStore);
 
   vscode.window.registerTreeDataProvider(
     "codetasks.taskView",
     taskTreeProvider,
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerCodeLensProvider(
+      { scheme: "file" },
+      taskCodeLensProvider,
+    ),
   );
 
   const openTaskCommand = vscode.commands.registerCommand(
