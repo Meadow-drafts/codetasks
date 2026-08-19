@@ -16,7 +16,7 @@ function isTaskType(value: string): value is TaskType {
   return SUPPORTED_TASK_TYPES.includes(value as TaskType);
 }
 
-function createTaskId(
+export function createTaskId(
   filePath: string,
   type: TaskType,
   title: string,

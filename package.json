@@ -25,8 +25,24 @@
         "title": "CodeTasks: Change Status"
       },
       {
+        "command": "codetasks.markTaskDone",
+        "title": "CodeTasks: Mark Task Done"
+      },
+      {
+        "command": "codetasks.archiveTask",
+        "title": "CodeTasks: Archive Task"
+      },
+      {
         "command": "codetasks.refreshTasks",
         "title": "CodeTasks: Refresh Tasks"
+      },
+      {
+        "command": "codetasks.openArchivedTasks",
+        "title": "CodeTasks: Open Archived Tasks"
+      },
+      {
+        "command": "codetasks.restoreTask",
+        "title": "CodeTasks: Restore Task"
       }
     ],
     "viewsContainers": {
@@ -52,13 +68,23 @@
           "command": "codetasks.openWorkspace",
           "when": "view == codetasks.taskView",
           "group": "navigation"
+        },
+        {
+          "command": "codetasks.openArchivedTasks",
+          "when": "view == codetasks.taskView",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
-          "command": "codetasks.updateTaskStatus",
-          "when": "view == codetasks.taskView && viewItem == task",
+          "command": "codetasks.openWorkspace",
+          "when": "view == codetasks.taskView && viewItem == workspaceRoot",
           "group": "codetasks"
+        },
+        {
+          "command": "codetasks.openArchivedTasks",
+          "when": "view == codetasks.taskView && viewItem == archiveRoot",
+          "group": "codetasks@2"
         }
       ]
     }

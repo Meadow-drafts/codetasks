@@ -60,8 +60,23 @@ export class TaskWorkspaceProvider {
       },
     );
 
+    const postWorkspaceSnapshot = () => {
+      const stats = this.taskStore.getTaskStats();
+      const tasks = this.taskStore.getActiveTasks();
+
+      void panel.webview.postMessage({
+        command: "statsUpdated",
+        stats,
+      });
+
+      void panel.webview.postMessage({
+        command: "tasksUpdated",
+        tasks,
+      });
+    };
+
     const storeChangeSubscription = this.taskStore.onDidChange(() => {
-      panel.webview.html = this.getHtml(currentView);
+      postWorkspaceSnapshot();
     });
 
     panel.onDidDispose(() => {
@@ -75,9 +90,13 @@ export class TaskWorkspaceProvider {
           currentView = message.view;
           return;
         }
+        if (message.command === "requestTasksSync") {
+          postWorkspaceSnapshot();
+          return;
+        }
         if (message.command === "openTask") {
           const task = this.taskStore
-            .getTasks()
+            .getActiveTasks()
             .find((task) => task.id === message.taskId);
 
           if (!task) {
@@ -124,7 +143,7 @@ export class TaskWorkspaceProvider {
           }
 
           const task = this.taskStore
-            .getTasks()
+            .getActiveTasks()
             .find((task) => task.id === message.taskId);
 
           if (!task) {
@@ -140,6 +159,14 @@ export class TaskWorkspaceProvider {
             taskId: task.id,
             status: task.status,
           });
+
+          return;
+        }
+        if (message.command === "openTaskDetails") {
+          vscode.commands.executeCommand(
+            "codetasks.openTaskDetails",
+            message.taskId,
+          );
 
           return;
         }
@@ -163,7 +190,7 @@ export class TaskWorkspaceProvider {
           }
 
           const task = this.taskStore
-            .getTasks()
+            .getActiveTasks()
             .find((task) => task.id === message.taskId);
 
           if (!task) {
@@ -199,10 +226,9 @@ export class TaskWorkspaceProvider {
     panel.webview.html = this.getHtml(currentView);
   }
 
-  private getHtml(
-    currentView: "table" | "kanban" = "table",
-): string {
-    const tasks = this.taskStore.getTasks();
+  private getHtml(currentView: "table" | "kanban" = "table"): string {
+    const tasks = this.taskStore.getActiveTasks();
+    const stats = this.taskStore.getTaskStats();
     const statusCounts = {
       open: tasks.filter((task) => task.status === "open").length,
 
@@ -238,8 +264,8 @@ export class TaskWorkspaceProvider {
 					data-created-at="${this.escapeHtml(task.createdAt)}"
 					data-updated-at="${this.escapeHtml(task.updatedAt)}"
 					data-file-name="${this.escapeHtml(
-						vscode.Uri.file(task.filePath).fsPath.split("/").pop() || ""
-					)}"
+            vscode.Uri.file(task.filePath).fsPath.split("/").pop() || "",
+          )}"
 					data-line="${task.line + 1}"
 				>
 								<td>
@@ -817,6 +843,86 @@ export class TaskWorkspaceProvider {
 
 					flex-shrink: 0;
 				}
+				
+				.stats {
+					display: grid;
+
+					grid-template-columns:
+						repeat(6, minmax(0, 1fr));
+
+					gap: 10px;
+
+					margin-bottom: 20px;
+				}
+
+				.stat-card {
+					padding: 12px;
+
+					border: 1px solid
+						var(--vscode-panel-border);
+
+					border-radius: 6px;
+
+					background:
+						var(--vscode-sideBar-background);
+
+					cursor: pointer;
+
+					transition:
+						border-color 0.15s ease,
+						background 0.15s ease;
+				}
+
+				.stat-card:hover {
+					border-color:
+						var(--vscode-focusBorder);
+
+					background:
+						var(--vscode-list-hoverBackground);
+				}
+
+
+				.stat-card.active {
+					border-color:
+						var(--vscode-focusBorder);
+
+					background:
+						var(--vscode-list-activeSelectionBackground);
+
+					color:
+						var(--vscode-list-activeSelectionForeground);
+				}
+
+				.stat-label {
+					font-size: 11px;
+
+					color:
+						var(--vscode-descriptionForeground);
+
+					margin-bottom: 6px;
+				}
+
+				.stat-value {
+					font-size: 20px;
+
+					font-weight: 600;
+				}
+				
+				@media (max-width: 900px) {
+					.stats {
+						grid-template-columns:
+							repeat(3, minmax(0, 1fr));
+					}
+
+				}
+
+				@media (max-width: 600px) {
+					.stats {
+						grid-template-columns:
+							repeat(2, minmax(0, 1fr));
+					}
+
+				}
 				</style>
 			</head>
 	  	
@@ -830,22 +936,14 @@ export class TaskWorkspaceProvider {
 
 						<button
 							id="table-view-button"
-							class="view-button ${
-							currentView === "table"
-								? "active"
-								: ""
-						}"
+							class="view-button ${currentView === "table" ? "active" : ""}"
 						>
 							☷ Table
 						</button>
 
 						<button
 							id="kanban-view-button"
-						class="view-button ${
-								currentView === "kanban"
-									? "active"
-									: ""
-							}"
+						class="view-button ${currentView === "kanban" ? "active" : ""}"
 						>
 							▦ Kanban
 						</button>
@@ -853,47 +951,47 @@ export class TaskWorkspaceProvider {
 					</div>
 
 					<div class="count">
-						<span>
+						<span id="header-task-count">
 							${tasks.length} tasks
 						</span>
 
 						<span class="separator">·</span>
 
-						<span>
+						<span id="header-open-count">
 							${statusCounts.open} open
 						</span>
 
 						<span class="separator">·</span>
 
-						<span>
+						<span id="header-in-progress-count">
 							${statusCounts["in-progress"]} in progress
 						</span>
 
 						<span class="separator">·</span>
 
-						<span>
+						<span id="header-blocked-count">
 							${statusCounts.blocked} blocked
 						</span>
 
 						<span class="separator">·</span>
 
-						<span>
+						<span id="header-review-count">
 							${statusCounts.review} review
 						</span>
 
 						<span class="separator">·</span>
 
-						<span>
+						<span id="header-done-count">
 							${statusCounts.done} done
 						</span>
 					</div>
 					<div class="priority-summary">
 
-						<span>
+						<span id="header-critical-count">
 							${priorityCounts.critical} critical
 						</span>
 
-						<span>
+						<span id="header-high-count">
 							${priorityCounts.high} high
 						</span>
 
@@ -907,6 +1005,109 @@ export class TaskWorkspaceProvider {
 						>
 							↻ Refresh
 						</button>
+				</div>
+				<div class="stats">
+					<div
+						class="stat-card"
+						data-status-filter="all"
+					>
+						<div class="stat-label">
+							Total
+						</div>
+
+						<div
+							class="stat-value"
+							data-stat="total"
+						>
+							${stats.total}
+						</div>
+					</div>
+
+
+					<div
+						class="stat-card"
+						data-status-filter="open"
+					>
+						<div class="stat-label">
+							Open
+						</div>
+
+						<div
+							class="stat-value"
+							data-stat="open"
+						>
+							${stats.open}
+						</div>
+					</div>
+
+
+					<div
+						class="stat-card"
+						data-status-filter="in-progress"
+					>
+						<div class="stat-label">
+							In Progress
+						</div>
+
+						<div
+							class="stat-value"
+							data-stat="in-progress"
+						>
+							${stats.inProgress}
+						</div>
+					</div>
+
+
+					<div
+						class="stat-card"
+						data-status-filter="blocked"
+					>
+						<div class="stat-label">
+							Blocked
+						</div>
+
+						<div
+							class="stat-value"
+							data-stat="blocked"
+						>
+							${stats.blocked}
+						</div>
+					</div>
+
+
+					<div
+						class="stat-card"
+						data-status-filter="review"
+					>
+						<div class="stat-label">
+							Review
+						</div>
+
+						<div
+							class="stat-value"
+							data-stat="review"
+						>
+							${stats.review}
+						</div>
+					</div>
+
+
+					<div
+						class="stat-card"
+						data-status-filter="done"
+					>
+						<div class="stat-label">
+							Done
+						</div>
+
+						<div
+							class="stat-value"
+							data-stat="done"
+						>
+							${stats.done}
+						</div>
+					</div>
+
 				</div>
 
 				<div class="toolbar">
@@ -1012,11 +1213,7 @@ export class TaskWorkspaceProvider {
 
 				</div>
 				<div id="table-view"
-					style="display: ${
-						currentView === "table"
-							? "block"
-							: "none"
-					};"
+					style="display: ${currentView === "table" ? "block" : "none"};"
 					>
 					<table>
 						<thead>						
@@ -1037,11 +1234,7 @@ export class TaskWorkspaceProvider {
 				<div
 					id="kanban-view"
 					class="kanban-view"
-					style="display: ${
-						currentView === "kanban"
-							? "block"
-							: "none"
-					};"
+					style="display: ${currentView === "kanban" ? "block" : "none"};"
 				>
 					<div class="kanban-board">
 						<div
@@ -1118,6 +1311,327 @@ export class TaskWorkspaceProvider {
 						.replace(/"/g, "&quot;")
 						.replace(/'/g, "&#039;");
 				}
+
+				function getFileName(filePath) {
+					return filePath.split(/[\\/]/).pop() || "";
+				}
+
+				function buildTaskRowHtml(task) {
+					const fileName =
+						getFileName(task.filePath);
+
+					return (
+						'<tr class="task-row" ' +
+						'data-task-id="' +
+						escapeHtml(task.id) +
+						'" data-title="' +
+						escapeHtml(task.title.toLowerCase()) +
+						'" data-status="' +
+						task.status +
+						'" data-type="' +
+						task.type +
+						'" data-priority="' +
+						task.priority +
+						'" data-created-at="' +
+						escapeHtml(task.createdAt) +
+						'" data-updated-at="' +
+						escapeHtml(task.updatedAt) +
+						'" data-file-name="' +
+						escapeHtml(fileName) +
+						'" data-line="' +
+						(task.line + 1) +
+						'">' +
+						"<td>" +
+						escapeHtml(task.title) +
+						"</td>" +
+						"<td>" +
+						escapeHtml(task.type) +
+						"</td>" +
+						"<td>" +
+						'<select class="status-select" data-task-id="' +
+						escapeHtml(task.id) +
+						'" data-current-status="' +
+						task.status +
+						'">' +
+						'<option value="open" ' +
+						(task.status === "open" ? "selected" : "") +
+						">Open</option>" +
+						'<option value="in-progress" ' +
+						(task.status === "in-progress"
+							? "selected"
+							: "") +
+						">In Progress</option>" +
+						'<option value="blocked" ' +
+						(task.status === "blocked" ? "selected" : "") +
+						">Blocked</option>" +
+						'<option value="review" ' +
+						(task.status === "review" ? "selected" : "") +
+						">Review</option>" +
+						'<option value="done" ' +
+						(task.status === "done" ? "selected" : "") +
+						">Done</option>" +
+						"</select>" +
+						"</td>" +
+						"<td>" +
+						'<select class="priority-select" data-task-id="' +
+						escapeHtml(task.id) +
+						'" data-current-priority="' +
+						task.priority +
+						'">' +
+						'<option value="low" ' +
+						(task.priority === "low" ? "selected" : "") +
+						">Low</option>" +
+						'<option value="medium" ' +
+						(task.priority === "medium"
+							? "selected"
+							: "") +
+						">Medium</option>" +
+						'<option value="high" ' +
+						(task.priority === "high" ? "selected" : "") +
+						">High</option>" +
+						'<option value="critical" ' +
+						(task.priority === "critical"
+							? "selected"
+							: "") +
+						">Critical</option>" +
+						"</select>" +
+						"</td>" +
+						"<td>" +
+						escapeHtml(task.filePath) +
+						":" +
+						(task.line + 1) +
+						"</td>" +
+						"</tr>"
+					);
+				}
+
+				function updateHeaderSummary(tasks) {
+					const totalCount =
+						document.getElementById(
+							"header-task-count"
+						);
+
+					const openCount =
+						document.getElementById(
+							"header-open-count"
+						);
+
+					const inProgressCount =
+						document.getElementById(
+							"header-in-progress-count"
+						);
+
+					const blockedCount =
+						document.getElementById(
+							"header-blocked-count"
+						);
+
+					const reviewCount =
+						document.getElementById(
+							"header-review-count"
+						);
+
+					const doneCount =
+						document.getElementById(
+							"header-done-count"
+						);
+
+					const criticalCount =
+						document.getElementById(
+							"header-critical-count"
+						);
+
+					const highCount =
+						document.getElementById(
+							"header-high-count"
+						);
+
+					const statusCounts = {
+						open: 0,
+						"in-progress": 0,
+						blocked: 0,
+						review: 0,
+						done: 0,
+					};
+
+					const priorityCounts = {
+						critical: 0,
+						high: 0,
+					};
+
+					tasks.forEach((task) => {
+						if (task.status in statusCounts) {
+							statusCounts[task.status] += 1;
+						}
+
+						if (task.priority in priorityCounts) {
+							priorityCounts[task.priority] += 1;
+						}
+					});
+
+					if (totalCount) {
+						totalCount.textContent =
+							String(tasks.length) + " tasks";
+					}
+
+					if (openCount) {
+						openCount.textContent =
+							String(statusCounts.open) + " open";
+					}
+
+					if (inProgressCount) {
+						inProgressCount.textContent =
+							String(statusCounts["in-progress"]) +
+							" in progress";
+					}
+
+					if (blockedCount) {
+						blockedCount.textContent =
+							String(statusCounts.blocked) + " blocked";
+					}
+
+					if (reviewCount) {
+						reviewCount.textContent =
+							String(statusCounts.review) + " review";
+					}
+
+					if (doneCount) {
+						doneCount.textContent =
+							String(statusCounts.done) + " done";
+					}
+
+					if (criticalCount) {
+						criticalCount.textContent =
+							String(priorityCounts.critical) +
+							" critical";
+					}
+
+					if (highCount) {
+						highCount.textContent =
+							String(priorityCounts.high) + " high";
+					}
+				}
+
+				function renderTaskRows(tasks) {
+					if (!tableBody) {
+						return;
+					}
+
+					tableBody.innerHTML = tasks
+						.map((task) => buildTaskRowHtml(task))
+						.join("");
+
+					bindTaskInteractions();
+				}
+
+				function bindTaskRowEvents() {
+					document
+						.querySelectorAll(".task-row")
+						.forEach((row) => {
+							row.addEventListener("click", () => {
+								const taskId =
+									row.dataset.taskId;
+
+								if (!taskId) {
+									return;
+								}
+
+								console.log(
+									"Clicked task:",
+									taskId
+								);
+
+								vscode.postMessage({
+									command: "openTask",
+									taskId,
+								});
+							});
+						});
+				}
+
+				function bindStatusSelectEvents() {
+					document
+						.querySelectorAll(".status-select")
+						.forEach((select) => {
+							select.addEventListener(
+								"click",
+								(event) => {
+									event.stopPropagation();
+								}
+							);
+
+							select.addEventListener(
+								"change",
+								() => {
+									const taskId =
+										select.dataset.taskId;
+									const newStatus =
+										select.value;
+									const previousStatus =
+										select.dataset.currentStatus;
+
+									select.dataset.previousStatus =
+										previousStatus;
+									select.classList.add(
+										"updating"
+									);
+									select.disabled = true;
+
+									vscode.postMessage({
+										command: "updateStatus",
+										taskId,
+										status: newStatus,
+									});
+								}
+							);
+						});
+				}
+
+				function bindPrioritySelectEvents() {
+					document
+						.querySelectorAll(".priority-select")
+						.forEach((select) => {
+							select.addEventListener(
+								"click",
+								(event) => {
+									event.stopPropagation();
+								}
+							);
+
+							select.addEventListener(
+								"change",
+								() => {
+									const taskId =
+										select.dataset.taskId;
+									const newPriority =
+										select.value;
+									const previousPriority =
+										select.dataset.currentPriority;
+
+									select.dataset.previousPriority =
+										previousPriority;
+									select.classList.add(
+										"updating"
+									);
+									select.disabled = true;
+
+									vscode.postMessage({
+										command: "updatePriority",
+										taskId,
+										priority: newPriority,
+									});
+								}
+							);
+						});
+				}
+
+				function bindTaskInteractions() {
+					bindTaskRowEvents();
+					bindStatusSelectEvents();
+					bindPrioritySelectEvents();
+				}
+
+				
 
 				function renderKanban() {
 
@@ -1323,7 +1837,7 @@ export class TaskWorkspaceProvider {
 									}
 
 									vscode.postMessage({
-										command: "openTask",
+										command: "openTaskDetails",
 										taskId: taskId,
 									});
 								}
@@ -1567,11 +2081,47 @@ export class TaskWorkspaceProvider {
 					);
 
 
-				const rows =
+				const statCards =
 					document.querySelectorAll(
-						".task-row"
+						'.stat-card[data-status-filter]'
 					);
 
+
+				statCards.forEach((card) => {
+
+					card.addEventListener(
+						'click',
+						() => {
+
+							const status =
+								card.dataset.statusFilter;
+
+							if (!status) {
+								return;
+							}
+
+
+							statusFilter.value =
+								status;
+
+
+							statCards.forEach((item) => {
+								item.classList.remove(
+									'active'
+								);
+							});
+
+
+							card.classList.add(
+								'active'
+							);
+
+
+							filterTasks();
+						}
+					);
+
+				});
 
 				/*
 				* ============================================================
@@ -1611,6 +2161,9 @@ export class TaskWorkspaceProvider {
 						});
 					}
 				);
+
+				bindTaskInteractions();
+				filterTasks();
 
 
 				/*
@@ -1712,6 +2265,18 @@ export class TaskWorkspaceProvider {
 						rowsArray,
 						selectedSort
 					);
+
+					statCards.forEach((card) => {
+
+						const cardStatus =
+							card.dataset.statusFilter;
+
+						card.classList.toggle(
+							'active',
+							cardStatus === selectedStatus
+						);
+
+					});
 
 
 					/*
@@ -1895,186 +2460,6 @@ export class TaskWorkspaceProvider {
 
 				/*
 				* ============================================================
-				* TABLE ROW CLICK
-				* ============================================================
-				*/
-
-				rows.forEach((row) => {
-
-					row.addEventListener(
-						"click",
-						() => {
-
-							const taskId =
-								row.dataset.taskId;
-
-
-							console.log(
-								"Clicked task:",
-								taskId
-							);
-
-
-							vscode.postMessage({
-								command:
-									"openTask",
-
-								taskId:
-									taskId,
-							});
-						}
-					);
-				});
-
-
-				/*
-				* ============================================================
-				* STATUS DROPDOWNS
-				* ============================================================
-				*/
-
-				const statusSelects =
-					document.querySelectorAll(
-						".status-select"
-					);
-
-
-				statusSelects.forEach((select) => {
-
-					/*
-					* Prevent dropdown click from
-					* opening the task.
-					*/
-					select.addEventListener(
-						"click",
-						(event) => {
-
-							event.stopPropagation();
-						}
-					);
-
-
-					select.addEventListener(
-						"change",
-						() => {
-
-							const taskId =
-								select.dataset.taskId;
-
-
-							const newStatus =
-								select.value;
-
-
-							const previousStatus =
-								select.dataset.currentStatus;
-
-
-							select.dataset.previousStatus =
-								previousStatus;
-
-
-							/*
-							* Loading state.
-							*/
-							select.classList.add(
-								"updating"
-							);
-
-							select.disabled =
-								true;
-
-
-							vscode.postMessage({
-								command:
-									"updateStatus",
-
-								taskId:
-									taskId,
-
-								status:
-									newStatus,
-							});
-						}
-					);
-				});
-
-
-				/*
-				* ============================================================
-				* PRIORITY DROPDOWNS
-				* ============================================================
-				*/
-
-				const prioritySelects =
-					document.querySelectorAll(
-						".priority-select"
-					);
-
-
-				prioritySelects.forEach((select) => {
-
-					/*
-					* Prevent dropdown click from
-					* opening the task.
-					*/
-					select.addEventListener(
-						"click",
-						(event) => {
-
-							event.stopPropagation();
-						}
-					);
-
-
-					select.addEventListener(
-						"change",
-						() => {
-
-							const taskId =
-								select.dataset.taskId;
-
-
-							const newPriority =
-								select.value;
-
-
-							const previousPriority =
-								select.dataset.currentPriority;
-
-
-							select.dataset.previousPriority =
-								previousPriority;
-
-
-							/*
-							* Loading state.
-							*/
-							select.classList.add(
-								"updating"
-							);
-
-							select.disabled =
-								true;
-
-
-							vscode.postMessage({
-								command:
-									"updatePriority",
-
-								taskId:
-									taskId,
-
-								priority:
-									newPriority,
-							});
-						}
-					);
-				});
-
-
-				/*
-				* ============================================================
 				* MESSAGES FROM EXTENSION HOST
 				* ============================================================
 				*/
@@ -2085,6 +2470,31 @@ export class TaskWorkspaceProvider {
 
 						const message =
 							event.data;
+
+
+						/*
+						* ----------------------------------------------------
+						* TASKS UPDATED
+						* ----------------------------------------------------
+						*/
+
+						if (
+							message.command ===
+							"tasksUpdated"
+						) {
+
+							renderTaskRows(
+								message.tasks || []
+							);
+
+							updateHeaderSummary(
+								message.tasks || []
+							);
+
+							filterTasks();
+
+							return;
+						}
 
 
 						/*
@@ -2180,6 +2590,85 @@ export class TaskWorkspaceProvider {
 								renderKanban();
 							}
 
+
+							return;
+						}
+
+
+						 /*
+						* ----------------------------------------------------
+						* STATS UPDATED
+						* ----------------------------------------------------
+						*/
+
+						if (
+							message.command ===
+							"statsUpdated"
+						) {
+
+							const stats =
+								message.stats;
+
+							const total =
+								document.querySelector(
+									'[data-stat="total"]'
+								);
+
+							const open =
+								document.querySelector(
+									'[data-stat="open"]'
+								);
+
+							const inProgress =
+								document.querySelector(
+									'[data-stat="in-progress"]'
+								);
+
+							const blocked =
+								document.querySelector(
+									'[data-stat="blocked"]'
+								);
+
+							const review =
+								document.querySelector(
+									'[data-stat="review"]'
+								);
+
+							const done =
+								document.querySelector(
+									'[data-stat="done"]'
+								);
+
+
+							if (total) {
+								total.textContent =
+									String(stats.total);
+							}
+
+							if (open) {
+								open.textContent =
+									String(stats.open);
+							}
+
+							if (inProgress) {
+								inProgress.textContent =
+									String(stats.inProgress);
+							}
+
+							if (blocked) {
+								blocked.textContent =
+									String(stats.blocked);
+							}
+
+							if (review) {
+								review.textContent =
+									String(stats.review);
+							}
+
+							if (done) {
+								done.textContent =
+									String(stats.done);
+							}
 
 							return;
 						}
@@ -2340,6 +2829,34 @@ export class TaskWorkspaceProvider {
 					}
 				);
 
+				window.addEventListener(
+					"visibilitychange",
+					() => {
+
+						if (
+							document.visibilityState ===
+							"visible"
+						) {
+
+							vscode.postMessage({
+								command:
+									"requestTasksSync",
+							});
+
+						}
+					}
+				);
+
+				window.addEventListener(
+					"focus",
+					() => {
+						vscode.postMessage({
+							command:
+								"requestTasksSync",
+						});
+					}
+				);
+
 
 				/*
 				* ============================================================
@@ -2376,5 +2893,4 @@ export class TaskWorkspaceProvider {
   }
 }
 
-
-// possiblity to add a task directly on the view 
+// possiblity to add a task directly on the view

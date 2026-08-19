@@ -1,0 +1,1289 @@
+# CodeTasks — Feature & Version Implementation Roadmap
+
+You are working inside the CodeTasks VS Code extension repository.
+
+You have direct access to the IDE, repository files, TypeScript source, package configuration, extension manifests, and existing implementation. You should inspect the repository before making changes and treat the existing code as the source of truth.
+
+This document defines the **planned product evolution and implementation order**.
+
+Do not implement every future feature immediately. Work version by version, preserving existing functionality and architecture.
+
+---
+
+# 1. PRODUCT PURPOSE
+
+CodeTasks is a VS Code extension that scans source code for developer task markers such as:
+
+* TODO
+* FIXME
+* BUG
+* HACK
+* REFACTOR
+* TASK
+
+It turns these comments into persistent, manageable tasks.
+
+The extension is intended to evolve from a simple code-comment task tracker into a more complete developer task-management/workflow tool inside VS Code.
+
+The core principle is:
+
+> CodeTasks should remain tightly connected to the source code while providing increasingly powerful task-management capabilities.
+
+---
+
+# 2. CURRENT ARCHITECTURE
+
+The current implementation broadly consists of:
+
+```text
+Scanner
+   ↓
+Reconciler
+   ↓
+TaskStore
+   ↓
+Workspace Webview / Detail Webview / Other UI
+```
+
+Important existing pieces include:
+
+```text
+models/task
+scanner
+reconciler/taskReconciler
+store/taskStore
+providers / webview providers
+extension commands
+```
+
+The current persistent storage is VS Code `workspaceState`.
+
+Tasks are represented by `CodeTask`.
+
+The store currently supports:
+
+* loading tasks
+* saving tasks
+* reconciling scanned tasks
+* active tasks
+* archived tasks
+* task statistics
+* updating task fields
+* updating status
+* updating priority
+* archiving
+* unarchiving
+* clearing tasks
+* emitting `onDidChange`
+
+---
+
+# 3. CURRENT TASK LIFECYCLE
+
+A task can conceptually move through:
+
+```text
+Discovered
+   ↓
+Open
+   ↓
+In Progress
+   ↓
+Review
+   ↓
+Done
+```
+
+It can also become:
+
+```text
+Blocked
+```
+
+independently of the normal workflow.
+
+A task can be:
+
+```text
+Active
+   ↓
+Archived
+```
+
+Archived tasks should not appear in active task lists.
+
+Important distinction:
+
+### Status
+
+Describes workflow state:
+
+```text
+open
+in-progress
+blocked
+review
+done
+```
+
+### Priority
+
+Describes importance:
+
+```text
+low
+medium
+high
+critical
+```
+
+### Archive
+
+Archive is NOT a status.
+
+It is represented separately through:
+
+```ts
+archivedAt?: string;
+```
+
+Therefore:
+
+```text
+status = done
+archivedAt = undefined
+```
+
+means a completed but active task.
+
+Whereas:
+
+```text
+status = done
+archivedAt = "2026-..."
+```
+
+means an archived task.
+
+---
+
+# 4. CURRENT FUNCTIONALITY
+
+The implementation already contains or is expected to contain:
+
+## Task discovery
+
+Scan source files and identify task comments.
+
+## Task reconciliation
+
+The reconciler must preserve user-owned metadata when rescanning.
+
+Existing task values that must survive rescanning include:
+
+```text
+status
+priority
+createdAt
+updatedAt
+archivedAt
+```
+
+Do not accidentally reset these when a source file is rescanned.
+
+## Task persistence
+
+Tasks are persisted through:
+
+```ts
+workspaceState
+```
+
+## Active task filtering
+
+The canonical active-task definition is:
+
+```ts
+!task.archivedAt
+```
+
+The canonical archived-task definition is:
+
+```ts
+!!task.archivedAt
+```
+
+Do not duplicate alternative archive logic throughout the UI.
+
+Use the TaskStore methods wherever possible.
+
+---
+
+# 5. CURRENT UI
+
+The workspace view currently supports:
+
+## Table view
+
+Displays:
+
+* task
+* type
+* status
+* priority
+* location
+
+## Kanban view
+
+Columns:
+
+```text
+Open
+In Progress
+Blocked
+Review
+Done
+```
+
+Cards can be dragged between columns.
+
+Dragging a card should update its task status.
+
+## Search
+
+Search tasks by title.
+
+## Filtering
+
+Filter by:
+
+* status
+* type
+* priority
+
+## Sorting
+
+Current sorting options include:
+
+* recently updated
+* least recently updated
+* recently created
+* oldest created
+* highest priority
+* lowest priority
+* title A–Z
+* title Z–A
+
+## Statistics
+
+The workspace currently exposes counts for:
+
+* total
+* open
+* in progress
+* blocked
+* review
+* done
+
+## Task details
+
+There is a dedicated task detail webview.
+
+The detail page should allow task inspection and supported task actions.
+
+## Archive
+
+Tasks can be archived from the detail page.
+
+Successful archive should produce a success notification.
+
+After archiving, the task must disappear from active lists without requiring a VS Code restart.
+
+---
+
+# 6. IMPORTANT CURRENT BUG/ARCHITECTURE REQUIREMENT
+
+The TaskStore emits:
+
+```ts
+this.changeEmitter.fire();
+```
+
+after modifications.
+
+Consumers should subscribe to:
+
+```ts
+taskStore.onDidChange(...)
+```
+
+The workspace provider already listens for changes and refreshes:
+
+```text
+stats
+tasks
+```
+
+The task detail page may also subscribe to store changes where appropriate.
+
+The intended reactive flow is:
+
+```text
+User action
+   ↓
+TaskStore mutation
+   ↓
+save()
+   ↓
+changeEmitter.fire()
+   ↓
+UI subscribers
+   ↓
+UI refresh
+```
+
+Do not solve state-refresh problems by manually duplicating mutation logic in every webview.
+
+---
+
+# 7. VERSION STRATEGY
+
+Implement the product progressively.
+
+Do not build advanced functionality before the underlying task model and state architecture are stable.
+
+Recommended roadmap:
+
+---
+
+# VERSION 0.1 — FOUNDATION
+
+Goal:
+
+Create a reliable task-discovery and persistence system.
+
+Features:
+
+* scan source files
+* recognize task comments
+* create CodeTask objects
+* persist tasks
+* reconcile rescans
+* preserve task metadata
+* active/archived distinction
+* basic task count
+
+Core reliability requirements:
+
+* no duplicate tasks
+* stable task IDs
+* source location tracking
+* persistence across VS Code reload
+* reconciliation without destroying user changes
+
+This version is the foundation for everything else.
+
+---
+
+# VERSION 0.2 — TASK WORKSPACE
+
+Goal:
+
+Make CodeTasks usable as a daily task-management interface.
+
+Features:
+
+* workspace dashboard
+* task table
+* task details
+* search
+* status filtering
+* type filtering
+* priority filtering
+* sorting
+* statistics
+* task navigation to source code
+
+Status:
+
+```text
+Open
+In Progress
+Blocked
+Review
+Done
+```
+
+Priority:
+
+```text
+Low
+Medium
+High
+Critical
+```
+
+---
+
+# VERSION 0.3 — TASK WORKFLOW
+
+Goal:
+
+Make task state changes efficient.
+
+Features:
+
+* status dropdown
+* priority dropdown
+* Kanban board
+* drag-and-drop status changes
+* optimistic/loading UI
+* failed update recovery
+* automatic UI synchronization
+* task updated timestamps
+
+Important:
+
+Changing status or priority must go through `TaskStore`.
+
+Do not directly mutate UI state as the source of truth.
+
+---
+
+# VERSION 0.4 — ARCHIVING & TASK LIFECYCLE
+
+Goal:
+
+Introduce proper lifecycle management.
+
+Features:
+
+* archive task
+* unarchive task
+* archived task list/view
+* archive confirmation where appropriate
+* archive success notification
+* active task filtering
+* archived task filtering
+* archive timestamp
+* lifecycle-safe reconciliation
+
+Critical rule:
+
+Archived tasks must not reappear simply because the scanner finds their source comment again.
+
+The reconciler must preserve:
+
+```ts
+archivedAt
+```
+
+for an existing task.
+
+Active UIs should use:
+
+```ts
+getActiveTasks()
+```
+
+rather than:
+
+```ts
+getTasks()
+```
+
+when displaying active work.
+
+---
+
+# VERSION 0.5 — TASK DETAILS EXPERIENCE
+
+Goal:
+
+Make the task detail page a proper task-management screen.
+
+Expected capabilities:
+
+* task title
+* task description
+* type
+* status
+* priority
+* source file
+* source line
+* created date
+* updated date
+* archived date where applicable
+* edit task
+* change status
+* change priority
+* archive
+* unarchive
+* open source location
+* back navigation
+
+The detail webview must remain synchronized with TaskStore changes.
+
+Buttons must not depend solely on stale HTML state.
+
+---
+
+# VERSION 0.6 — EDITING & TASK METADATA
+
+Goal:
+
+Allow developers to maintain richer task information.
+
+Potential features:
+
+* edit title
+* edit description
+* edit priority
+* edit status
+* add notes
+* update metadata
+* timestamps
+* validation
+
+The existing:
+
+```ts
+updateTask()
+```
+
+should remain the central mutation mechanism.
+
+Avoid creating separate persistence implementations for every field.
+
+---
+
+# VERSION 0.7 — ARCHIVED TASKS
+
+Goal:
+
+Provide a dedicated historical view.
+
+Features:
+
+* archived tasks page
+* search archived tasks
+* filter archived tasks
+* restore/unarchive
+* archive date
+* source navigation
+* distinction between active and archived tasks
+
+Possible UI:
+
+```text
+Workspace
+├── Active Tasks
+└── Archived Tasks
+```
+
+Do not mix archived tasks into the normal active Kanban board unless explicitly designed as a separate filter.
+
+---
+
+# VERSION 0.8 — BETTER SOURCE CODE INTEGRATION
+
+Goal:
+
+Make CodeTasks feel native to VS Code.
+
+Features to consider:
+
+* CodeLens for task comments
+* inline task actions
+* source-code decorations
+* quick actions
+* "Open Task Details"
+* "Mark Done"
+* "Change Priority"
+* "Archive Task"
+* editor context-menu actions
+* explorer/context-menu integration
+
+Example conceptual flow:
+
+```text
+// TODO: Refactor authentication
+        ↓
+CodeLens
+        ↓
+[Open Task] [Done] [Archive]
+```
+
+Avoid cluttering the editor.
+
+Actions should be concise and useful.
+
+---
+
+# VERSION 0.9 — COMMAND PALETTE & QUICK ACTIONS
+
+Add commands such as:
+
+```text
+CodeTasks: Open Workspace
+CodeTasks: Scan Tasks
+CodeTasks: Refresh Tasks
+CodeTasks: Create Task
+CodeTasks: Open Archived Tasks
+CodeTasks: Search Tasks
+CodeTasks: Mark Task Done
+CodeTasks: Archive Task
+CodeTasks: Restore Task
+```
+
+Commands should be registered in the extension command layer rather than duplicated inside webviews.
+
+---
+
+# VERSION 1.0 — STABLE RELEASE
+
+Version 1.0 should represent a reliable, polished local task-management extension.
+
+Minimum expectations:
+
+* stable scanning
+* stable reconciliation
+* persistence
+* task workspace
+* task detail page
+* search
+* filtering
+* sorting
+* Kanban
+* status management
+* priority management
+* archive/unarchive
+* source navigation
+* reactive UI updates
+* error handling
+* commands
+* polished UX
+* no known data-loss bugs
+
+Before 1.0, prioritize correctness over adding more features.
+
+---
+
+# 10. POST-1.0 FEATURES
+
+Only consider these after the core system is stable.
+
+## Tags
+
+Tasks could support:
+
+```text
+frontend
+backend
+security
+performance
+bug
+technical-debt
+```
+
+Potential model:
+
+```ts
+tags?: string[];
+```
+
+## Assignees
+
+If collaboration is eventually supported:
+
+```ts
+assignee?: string;
+```
+
+## Due dates
+
+Potential:
+
+```ts
+dueDate?: string;
+```
+
+## Reminders
+
+Notify developers about upcoming tasks.
+
+## Task dependencies
+
+Example:
+
+```text
+Task A
+   ↓
+Task B
+   ↓
+Task C
+```
+
+Potential model:
+
+```ts
+dependsOn?: string[];
+```
+
+## Subtasks
+
+Example:
+
+```text
+Refactor authentication
+
+☐ Extract auth service
+☐ Add tests
+☐ Update API
+☐ Update documentation
+```
+
+## Task history
+
+Track:
+
+```text
+status changed
+priority changed
+archived
+restored
+edited
+```
+
+Example:
+
+```text
+Aug 18 — Priority changed High → Critical
+Aug 17 — Status changed Open → In Progress
+Aug 16 — Task created
+```
+
+## Analytics
+
+Potential metrics:
+
+* tasks discovered
+* tasks completed
+* average completion time
+* tasks by type
+* tasks by priority
+* technical debt trends
+
+---
+
+# 11. POSSIBLE VERSION 2.0 — TEAM/COLLABORATION
+
+Do not implement unless there is an actual product requirement.
+
+Potential capabilities:
+
+* shared task storage
+* team members
+* assignments
+* comments
+* synchronization
+* remote repositories
+* project-level task dashboards
+
+This would likely require moving beyond simple:
+
+```ts
+workspaceState
+```
+
+into a more deliberate persistence/synchronization architecture.
+
+Do not prematurely introduce a backend.
+
+---
+
+# 12. POSSIBLE AI FEATURES
+
+AI should be introduced only after the deterministic task-management system is reliable.
+
+Potential AI features:
+
+## AI task summarization
+
+Convert:
+
+```text
+// TODO: this auth thing is messy, fix later
+```
+
+into:
+
+```text
+Refactor authentication flow
+```
+
+## AI task categorization
+
+Automatically determine:
+
+```text
+type
+priority
+category
+```
+
+## AI descriptions
+
+Generate useful task descriptions from surrounding source code.
+
+## AI task decomposition
+
+Convert:
+
+```text
+Refactor authentication
+```
+
+into subtasks.
+
+## AI implementation assistance
+
+From the task detail page:
+
+```text
+Explain task
+Generate implementation plan
+Suggest files to modify
+Generate tests
+```
+
+## AI code context
+
+Use the source file and relevant repository context to explain a task.
+
+Do not allow AI functionality to bypass normal task persistence and validation.
+
+---
+
+# 13. IMPORTANT DATA-MODEL EVOLUTION
+
+The task model should evolve carefully.
+
+Current conceptual model:
+
+```ts
+CodeTask {
+    id
+    title
+    description
+    type
+    status
+    priority
+    filePath
+    line
+    createdAt
+    updatedAt
+    archivedAt?
+}
+```
+
+Future additions may include:
+
+```ts
+tags?
+dueDate?
+assignee?
+dependsOn?
+parentTaskId?
+history?
+```
+
+Do not add fields simply because they might be useful someday.
+
+Only introduce fields when a corresponding feature requires them.
+
+---
+
+# 14. ARCHITECTURAL RULES FOR ALL FUTURE VERSIONS
+
+## Rule 1 — TaskStore is the source of truth
+
+UI must not become the source of truth.
+
+Correct:
+
+```text
+UI
+ ↓
+TaskStore
+ ↓
+Persistence
+ ↓
+onDidChange
+ ↓
+UI
+```
+
+Incorrect:
+
+```text
+UI
+ ↓
+change local HTML
+ ↓
+hope persistence catches up
+```
+
+---
+
+## Rule 2 — Do not duplicate business logic
+
+Do not implement archive behavior independently in:
+
+* workspace provider
+* detail provider
+* archived provider
+* commands
+
+Instead:
+
+```ts
+taskStore.archiveTask(taskId)
+```
+
+should be the central operation.
+
+---
+
+## Rule 3 — Reconciliation must preserve user state
+
+When scanner output changes, do not overwrite:
+
+```text
+status
+priority
+createdAt
+updatedAt
+archivedAt
+```
+
+unless there is a deliberate product reason.
+
+---
+
+## Rule 4 — Active and archived tasks are different views
+
+Use:
+
+```ts
+getActiveTasks()
+```
+
+for active UI.
+
+Use:
+
+```ts
+getArchivedTasks()
+```
+
+for archive UI.
+
+Use:
+
+```ts
+getTasks()
+```
+
+only when intentionally working with the complete dataset.
+
+---
+
+## Rule 5 — UI refresh must be event-driven
+
+After successful mutations:
+
+```ts
+this.changeEmitter.fire();
+```
+
+Consumers should react to the event.
+
+Avoid manually forcing every webview to reconstruct state independently.
+
+---
+
+## Rule 6 — Preserve existing functionality
+
+Before changing a shared component, inspect all consumers.
+
+For example, changing:
+
+```ts
+getTasks()
+```
+
+may affect:
+
+* workspace
+* detail page
+* archived page
+* scanner
+* commands
+* statistics
+* reconciliation
+
+Do not change semantics without checking callers.
+
+---
+
+# 15. TESTING ROADMAP
+
+Every major version should add tests.
+
+Minimum important tests:
+
+## Reconciliation
+
+Test:
+
+```text
+new scanned task → created
+existing task → preserved
+status preserved
+priority preserved
+createdAt preserved
+updatedAt preserved
+archivedAt preserved
+```
+
+## Archive
+
+Test:
+
+```text
+archive active task
+→ archivedAt exists
+→ active list excludes task
+→ archived list includes task
+```
+
+## Unarchive
+
+Test:
+
+```text
+unarchive
+→ archivedAt removed
+→ active list includes task
+```
+
+## Updates
+
+Test:
+
+```text
+update status
+update priority
+update description
+update title
+```
+
+## Persistence
+
+Test:
+
+```text
+mutation
+→ save
+→ reload
+→ state preserved
+```
+
+## UI synchronization
+
+Verify that:
+
+```text
+archive
+→ TaskStore changes
+→ event fires
+→ workspace receives update
+→ task disappears
+→ statistics update
+```
+
+---
+
+# 16. IMPLEMENTATION ORDER FOR AN IDE AGENT
+
+When asked to implement a feature:
+
+### Step 1
+
+Inspect the repository.
+
+### Step 2
+
+Identify:
+
+```text
+model
+store
+reconciler
+commands
+provider
+webview
+tests
+```
+
+### Step 3
+
+Trace the existing data flow.
+
+### Step 4
+
+Determine whether the requested behavior belongs in:
+
+```text
+model
+TaskStore
+reconciler
+command
+provider
+webview
+```
+
+### Step 5
+
+Implement business logic in the appropriate backend/extension layer first.
+
+### Step 6
+
+Expose the behavior through commands/messages.
+
+### Step 7
+
+Update the UI.
+
+### Step 8
+
+Make sure `onDidChange` keeps all affected views synchronized.
+
+### Step 9
+
+Test existing features.
+
+### Step 10
+
+Only then move to the next feature.
+
+---
+
+# 17. DO NOT DO THESE THINGS
+
+Do not:
+
+* rewrite the architecture unnecessarily
+* introduce Redux/Zustand/etc. for webviews without need
+* introduce a backend prematurely
+* replace workspaceState without a requirement
+* duplicate TaskStore logic
+* create separate archive state in the webview
+* hide archived tasks only with CSS
+* make scanner reconciliation overwrite user state
+* introduce AI before core functionality is stable
+* implement future roadmap features without being asked
+* break existing commands while adding features
+* remove working functionality during refactoring
+
+---
+
+# 18. PRIORITY ORDER
+
+When deciding what to work on next, prioritize:
+
+```text
+1. Data correctness
+2. Persistence
+3. Reconciliation
+4. Store architecture
+5. UI synchronization
+6. Core task workflow
+7. Archive lifecycle
+8. Source-code integration
+9. UX improvements
+10. Advanced features
+11. AI features
+12. Collaboration
+```
+
+Correctness comes before visual polish.
+
+---
+
+# 19. CURRENT DEVELOPMENT PRINCIPLE
+
+The project should evolve incrementally.
+
+The immediate objective is NOT to build every feature listed here.
+
+The objective is to reach:
+
+```text
+Reliable foundation
+        ↓
+Useful task workspace
+        ↓
+Complete task lifecycle
+        ↓
+Native VS Code integration
+        ↓
+Stable 1.0
+        ↓
+Advanced capabilities
+```
+
+Whenever implementing a feature, first determine which version it belongs to and whether prerequisite functionality already exists.
+
+If a prerequisite is missing, implement the prerequisite cleanly rather than building a workaround.
+
+---
+
+# 20. HANDOVER INSTRUCTION TO FUTURE AI AGENTS
+
+You are not starting a new project.
+
+You are continuing an existing CodeTasks implementation.
+
+Before modifying anything:
+
+1. Inspect the repository.
+2. Read the current `CodeTask` model.
+3. Read `TaskStore`.
+4. Read the reconciler.
+5. Search for every caller of the methods you intend to modify.
+6. Inspect all relevant webview providers.
+7. Inspect registered commands.
+8. Inspect tests.
+9. Determine the current implementation version/state.
+10. Make the smallest architectural change necessary.
+
+When implementing a roadmap item, explicitly identify:
+
+```text
+Current state
+Required state
+Files affected
+Business logic changes
+UI changes
+Event/state synchronization changes
+Tests required
+Potential regressions
+```
+
+Do not assume that the roadmap describes the exact current repository state. The repository is authoritative.
+
+If existing implementation differs from this roadmap, preserve working behavior and adapt the roadmap to the actual codebase.
+
+The ultimate goal is a maintainable, reliable VS Code task-management extension rather than simply accumulating features.

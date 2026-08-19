@@ -1,0 +1,1630 @@
+# CodeTasks — Full IDE Agent Handover Prompt
+
+You are taking over an existing VS Code extension project called **CodeTasks**.
+
+You are operating directly inside the IDE/repository, so you have access to the complete source code. **Do not assume that the snippets in this prompt represent the entire current implementation. Inspect the repository first and use the existing code as the source of truth.**
+
+Your responsibility is to continue the project from its current state, preserve working functionality, fix the remaining issues, and complete the product without losing architectural consistency.
+
+---
+
+# 1. PROJECT OVERVIEW
+
+CodeTasks is a VS Code extension that scans source-code comments such as:
+
+* TODO
+* FIXME
+* BUG
+* HACK
+* REFACTOR
+* TASK
+
+and turns them into manageable tasks inside a VS Code webview-based UI.
+
+The extension allows users to:
+
+* scan source files for tasks
+* display tasks
+* search tasks
+* filter tasks
+* sort tasks
+* update task status
+* update task priority
+* view tasks in a table
+* view tasks in a Kanban board
+* drag tasks between Kanban status columns
+* open a task's source location
+* open a task detail page
+* edit task information
+* archive tasks
+* unarchive tasks
+* persist task state between extension sessions
+
+The architecture is primarily:
+
+```text
+Source Files
+    ↓
+Scanner
+    ↓
+Scanned CodeTask[]
+    ↓
+TaskStore
+    ↓
+Reconciler
+    ↓
+Persistent Workspace State
+    ↓
+Workspace Webview / Task Detail Webview / Other UI
+```
+
+The `TaskStore` is the central source of truth.
+
+---
+
+# 2. IMPORTANT CURRENT ARCHITECTURAL PRINCIPLE
+
+There are two different concepts:
+
+## Scanned tasks
+
+These are the tasks discovered from source files.
+
+## Stored task state
+
+The user can modify properties of scanned tasks, such as:
+
+* status
+* priority
+* description
+* archive state
+* timestamps
+
+Therefore, when scanning happens again, the scanner must NOT blindly replace existing task state.
+
+The reconciler exists specifically to preserve user-managed state.
+
+The current reconciler is conceptually:
+
+```ts
+export function reconcileTasks(
+  scannedTasks: CodeTask[],
+  existingTasks: CodeTask[],
+): CodeTask[] {
+
+  const existingById = new Map(
+    existingTasks.map((task) => [task.id, task]),
+  );
+
+  return scannedTasks.map((scannedTask) => {
+
+    const existingTask =
+      existingById.get(scannedTask.id);
+
+    if (!existingTask) {
+      return scannedTask;
+    }
+
+    return {
+      ...scannedTask,
+
+      status: existingTask.status,
+      priority: existingTask.priority,
+      createdAt: existingTask.createdAt,
+      updatedAt: existingTask.updatedAt,
+      archivedAt: existingTask.archivedAt,
+    };
+  });
+}
+```
+
+Preserving `archivedAt` here is intentional.
+
+---
+
+# 3. CURRENT TASK MODEL
+
+Inspect the actual `CodeTask` model in the repository before changing anything.
+
+The model currently contains fields along the lines of:
+
+```ts
+interface CodeTask {
+  id: string;
+  title: string;
+  description?: string;
+  status: ...;
+  priority: ...;
+  type: ...;
+  filePath: string;
+  line: number;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt?: string;
+}
+```
+
+Do NOT assume the exact model above is current.
+
+Inspect:
+
+```text
+src/models/task.ts
+```
+
+or wherever `CodeTask` is currently defined.
+
+Preserve existing types and conventions.
+
+---
+
+# 4. TASKSTORE
+
+The central store is currently structured around:
+
+```text
+src/store/taskStore.ts
+```
+
+The current implementation includes:
+
+```ts
+const TASKS_KEY = "codetasks.tasks";
+
+type EditableTaskFields = Partial<
+  Pick<CodeTask, "title" | "description" | "status" | "priority">
+>;
+```
+
+The store:
+
+* loads tasks from `workspaceState`
+* saves tasks to `workspaceState`
+* reconciles scanned tasks
+* exposes active tasks
+* exposes archived tasks
+* updates task state
+* archives tasks
+* unarchives tasks
+* emits `onDidChange`
+
+Important methods currently include:
+
+```ts
+load()
+save()
+setTasks()
+getTasks()
+getActiveTasks()
+getArchivedTasks()
+getTaskCount()
+getTaskStats()
+updateTask()
+updateTaskStatus()
+updateTaskPriority()
+archiveTask()
+unarchiveTask()
+clear()
+```
+
+The store uses:
+
+```ts
+private readonly changeEmitter =
+  new vscode.EventEmitter<void>();
+
+readonly onDidChange =
+  this.changeEmitter.event;
+```
+
+Every meaningful mutation should:
+
+1. update the task
+2. persist the task list
+3. fire `changeEmitter`
+
+Do not remove this event-based architecture.
+
+---
+
+# 5. ACTIVE VS ARCHIVED TASKS
+
+This is extremely important.
+
+The store already has:
+
+```ts
+getActiveTasks(): CodeTask[] {
+  return this.tasks.filter(
+    (task) => !task.archivedAt
+  );
+}
+```
+
+and:
+
+```ts
+getArchivedTasks(): CodeTask[] {
+  return this.tasks.filter(
+    (task) => !!task.archivedAt
+  );
+}
+```
+
+Therefore:
+
+```text
+archivedAt === undefined
+```
+
+means the task is active.
+
+And:
+
+```text
+archivedAt !== undefined
+```
+
+means the task is archived.
+
+The workspace/task list should normally use:
+
+```ts
+getActiveTasks()
+```
+
+not:
+
+```ts
+getTasks()
+```
+
+unless the UI explicitly represents all tasks.
+
+---
+
+# 6. CURRENT BUG / FEATURE BEING WORKED ON
+
+The archive operation itself now works.
+
+When a user archives a task:
+
+* the archive operation succeeds
+* the success message appears
+* `archivedAt` is saved
+* `TaskStore.onDidChange` fires
+
+However, the archived task can still appear in the task list/UI.
+
+This needs to be fixed completely.
+
+The expected behavior is:
+
+```text
+User clicks Archive
+        ↓
+TaskStore.archiveTask()
+        ↓
+archivedAt is assigned
+        ↓
+TaskStore saves
+        ↓
+TaskStore fires onDidChange
+        ↓
+Workspace provider receives change
+        ↓
+Workspace gets getActiveTasks()
+        ↓
+Archived task is excluded
+        ↓
+Workspace webview receives tasksUpdated
+        ↓
+UI removes archived task
+```
+
+The same principle should apply to:
+
+* table view
+* Kanban view
+* task counts
+* status counts
+* search/filtering
+* task detail navigation where appropriate
+
+---
+
+# 7. IMPORTANT CURRENT WORKSPACE PROVIDER
+
+The workspace provider is currently approximately:
+
+```text
+src/providers/taskWorkspaceProvider.ts
+```
+
+It creates the main CodeTasks webview.
+
+It currently has this important subscription:
+
+```ts
+const storeChangeSubscription =
+  this.taskStore.onDidChange(() => {
+    const stats =
+      this.taskStore.getTaskStats();
+
+    const tasks =
+      this.taskStore.getActiveTasks();
+
+    panel.webview.postMessage({
+      command: "statsUpdated",
+      stats,
+    });
+
+    panel.webview.postMessage({
+      command: "tasksUpdated",
+      tasks,
+    });
+  });
+```
+
+This is correct architecturally.
+
+DO NOT simply remove it.
+
+The provider must listen to store changes because other parts of the extension can mutate the store.
+
+---
+
+# 8. CRITICAL ISSUE WITH THE CURRENT WORKSPACE WEBVIEW
+
+The workspace provider's initial HTML is generated with:
+
+```ts
+const tasks = this.taskStore.getActiveTasks();
+```
+
+and then rows are generated server-side inside the HTML string.
+
+This means the initial UI is correct.
+
+But when this message arrives:
+
+```ts
+{
+  command: "tasksUpdated",
+  tasks
+}
+```
+
+the webview must actually process the message.
+
+Inspect the current:
+
+```ts
+window.addEventListener("message", ...)
+```
+
+implementation.
+
+At the moment, it handles things such as:
+
+```text
+tasksRefreshed
+statusUpdated
+statsUpdated
+statusUpdateFailed
+priorityUpdated
+priorityUpdateFailed
+```
+
+but the implementation must also correctly handle:
+
+```text
+tasksUpdated
+```
+
+The important point is:
+
+**Posting `tasksUpdated` from the extension host is not enough.**
+
+The webview must receive the message and update its DOM/state.
+
+---
+
+# 9. DO NOT TAKE THE WRONG APPROACH
+
+Do NOT solve the archive issue by merely doing:
+
+```ts
+row.remove();
+```
+
+inside the archive success handler.
+
+That would only fix one particular UI state.
+
+The better architecture is:
+
+```text
+TaskStore is source of truth
+        ↓
+onDidChange
+        ↓
+Provider sends current active tasks
+        ↓
+Webview renders current active tasks
+```
+
+This makes the system robust for:
+
+* archive
+* unarchive
+* external updates
+* rescanning
+* status changes
+* priority changes
+* future task mutations
+
+---
+
+# 10. RECOMMENDED WEBVIEW UPDATE ARCHITECTURE
+
+Inspect the existing JavaScript carefully before implementing.
+
+The workspace webview currently creates:
+
+```text
+.task-row
+```
+
+elements server-side.
+
+It also creates Kanban cards dynamically from those rows.
+
+A clean solution is to create a client-side function responsible for rebuilding the task list when `tasksUpdated` arrives.
+
+For example, conceptually:
+
+```text
+renderTaskRows(tasks)
+```
+
+This should:
+
+1. locate the `<tbody>`
+2. remove existing task rows
+3. generate rows for the supplied active tasks
+4. attach the required event listeners
+5. preserve current search/filter/sort behavior
+6. rerender Kanban if currently visible
+
+Do not blindly copy this exact implementation. Inspect the current webview architecture and adapt it.
+
+---
+
+# 11. VERY IMPORTANT: EVENT LISTENERS
+
+The existing webview currently attaches event listeners directly to elements.
+
+For example:
+
+```ts
+rows.forEach((row) => {
+  row.addEventListener("click", ...)
+});
+```
+
+and:
+
+```ts
+statusSelects.forEach(...)
+```
+
+and:
+
+```ts
+prioritySelects.forEach(...)
+```
+
+If you dynamically replace rows after receiving `tasksUpdated`, the new rows will NOT automatically have these listeners.
+
+Therefore, if you rebuild the DOM, you must either:
+
+## Option A — Rebind listeners
+
+Create reusable functions such as:
+
+```text
+bindTaskRowEvents()
+bindStatusSelectEvents()
+bindPrioritySelectEvents()
+```
+
+and call them after rendering.
+
+## Option B — Event delegation
+
+Attach listeners to a stable parent such as:
+
+```text
+tbody
+```
+
+and inspect:
+
+```text
+event.target
+```
+
+This may be cleaner for dynamic task rows.
+
+Choose whichever fits the existing code best.
+
+---
+
+# 12. KANBAN VIEW
+
+The Kanban view is generated from `.task-row` elements.
+
+The existing logic effectively does:
+
+```text
+.task-row
+   ↓
+read status
+   ↓
+create Kanban card
+   ↓
+place card into matching column
+```
+
+The function:
+
+```ts
+renderKanban()
+```
+
+currently:
+
+* finds Kanban columns
+* finds task rows
+* filters rows by status
+* creates cards
+* adds drag-and-drop
+* adds click behavior
+
+This is important.
+
+If archived tasks are removed from the table rows, they should naturally disappear from Kanban as well.
+
+Do not create a second independent task source for Kanban unless there is a compelling reason.
+
+The active task list should remain the source.
+
+---
+
+# 13. CURRENT TABLE ROW CLICK BEHAVIOR
+
+The table rows currently use:
+
+```ts
+row.addEventListener(
+  "click",
+  () => {
+    const taskId =
+      row.dataset.taskId;
+
+    vscode.postMessage({
+      command: "openTask",
+      taskId,
+    });
+  }
+);
+```
+
+This opens the source file.
+
+Status and priority selects stop click propagation so that interacting with a dropdown does not open the task.
+
+Preserve this behavior.
+
+---
+
+# 14. TASK DETAILS
+
+There is a separate task detail webview.
+
+The workspace Kanban card currently sends:
+
+```ts
+vscode.postMessage({
+  command: "openTaskDetails",
+  taskId,
+});
+```
+
+The workspace host handles it with:
+
+```ts
+if (message.command === "openTaskDetails") {
+  vscode.commands.executeCommand(
+    "codetasks.openTaskDetails",
+    message.taskId,
+  );
+
+  return;
+}
+```
+
+The task detail view supports operations including:
+
+* editing
+* status update
+* priority update
+* archive
+* unarchive
+* navigation/back behavior
+* opening source file
+
+The detail view must also react to store changes where appropriate.
+
+---
+
+# 15. TASK DETAIL STORE SUBSCRIPTION
+
+The detail provider should have a subscription similar to:
+
+```ts
+const storeChangeSubscription =
+  this.taskStore.onDidChange(() => {
+    const tasks =
+      this.taskStore.getActiveTasks();
+
+    panel.webview.postMessage({
+      command: "tasksUpdated",
+      tasks,
+    });
+  });
+```
+
+But do NOT copy this blindly.
+
+Inspect the actual detail provider.
+
+Ask:
+
+> What should happen to the detail page if the currently displayed task is archived?
+
+Expected behavior should be deliberate.
+
+For example:
+
+```text
+User opens task
+       ↓
+Task detail page
+       ↓
+User archives task
+       ↓
+TaskStore changes
+       ↓
+Detail page receives updated state
+       ↓
+UI should either:
+    - update to archived state and offer Unarchive
+OR
+    - close/navigate away because active detail pages only represent active tasks
+```
+
+Choose the behavior that matches the rest of the product and existing implementation.
+
+Do not accidentally make an archived task inaccessible if the application has an archived-task view.
+
+---
+
+# 16. RECONCILIATION AND ARCHIVED TASKS
+
+There is an important subtlety here.
+
+Suppose:
+
+```text
+Task A is scanned
+Task A is archived
+User scans again
+```
+
+The reconciler should preserve:
+
+```ts
+archivedAt
+```
+
+Otherwise scanning would accidentally resurrect archived tasks.
+
+Therefore this:
+
+```ts
+archivedAt: existingTask.archivedAt
+```
+
+must remain.
+
+After reconciliation:
+
+```text
+Task A
+archivedAt = existing timestamp
+```
+
+Therefore:
+
+```ts
+getActiveTasks()
+```
+
+continues excluding it.
+
+---
+
+# 17. POTENTIAL RECONCILER EDGE CASE
+
+Inspect whether task IDs are stable across scans.
+
+If the scanner creates a different ID for the same source-code task every time, reconciliation will fail.
+
+Verify the implementation of:
+
+```text
+task scanner
+task ID generation
+task reconciler
+```
+
+A task ID should be stable enough that rescanning the same task can match the existing stored task.
+
+Do not change ID generation unless necessary.
+
+---
+
+# 18. TASK STATS
+
+The current stats implementation intentionally uses:
+
+```ts
+const activeTasks =
+  this.getActiveTasks();
+```
+
+Therefore:
+
+```text
+Total
+Open
+In Progress
+Blocked
+Review
+Done
+```
+
+must exclude archived tasks.
+
+This is correct.
+
+If an archive happens:
+
+```text
+Total decreases by 1
+Status count decreases appropriately
+```
+
+The workspace provider already sends:
+
+```ts
+statsUpdated
+```
+
+after `onDidChange`.
+
+The webview updates the statistic numbers.
+
+Ensure that task list and stats update together.
+
+---
+
+# 19. WORKSPACE REFRESH
+
+The workspace has a Refresh button.
+
+It sends:
+
+```ts
+{
+  command: "refreshTasks"
+}
+```
+
+The host executes:
+
+```ts
+vscode.commands.executeCommand(
+  "codetasks.refreshTasks"
+);
+```
+
+and then sends:
+
+```ts
+{
+  command: "tasksRefreshed"
+}
+```
+
+This is distinct from the store's automatic change notification.
+
+Understand the difference:
+
+### Refresh
+
+Means:
+
+```text
+Rescan source files
+```
+
+### Store change
+
+Means:
+
+```text
+Some task state changed
+```
+
+Do not confuse these two mechanisms.
+
+---
+
+# 20. EXPECTED ARCHITECTURE
+
+The ideal data flow is:
+
+```text
+                   ┌──────────────────┐
+                   │   Source Files   │
+                   └────────┬─────────┘
+                            │
+                            ▼
+                   ┌──────────────────┐
+                   │     Scanner      │
+                   └────────┬─────────┘
+                            │
+                            ▼
+                   ┌──────────────────┐
+                   │    Reconciler    │
+                   └────────┬─────────┘
+                            │
+                            ▼
+                   ┌──────────────────┐
+                   │    TaskStore     │
+                   │                  │
+                   │ activeTasks      │
+                   │ archivedTasks    │
+                   │ persistence      │
+                   └────────┬─────────┘
+                            │
+                     onDidChange
+                            │
+             ┌──────────────┼──────────────┐
+             ▼              ▼              ▼
+       Workspace       Task Detail    Other Views
+        Provider         Provider
+             │              │
+             ▼              ▼
+         Webview         Webview
+```
+
+The TaskStore should remain the central state authority.
+
+---
+
+# 21. FIRST THING YOU MUST DO
+
+Before editing anything:
+
+1. Inspect the repository tree.
+2. Identify:
+
+   * extension entry point
+   * TaskStore
+   * CodeTask model
+   * scanner
+   * reconciler
+   * workspace provider
+   * task detail provider
+   * commands
+   * webview files/templates
+   * package.json
+   * tsconfig
+3. Search for:
+
+   * `archiveTask`
+   * `unarchiveTask`
+   * `getActiveTasks`
+   * `getArchivedTasks`
+   * `onDidChange`
+   * `tasksUpdated`
+   * `statsUpdated`
+   * `openTaskDetails`
+   * `codetasks.openTaskDetails`
+   * `refreshTasks`
+4. Trace the complete archive flow.
+5. Trace the complete task rendering flow.
+
+Do not immediately start editing.
+
+First understand how the existing implementation works.
+
+---
+
+# 22. CURRENT ARCHIVE FLOW TO VERIFY
+
+Trace:
+
+```text
+Archive button
+    ↓
+webview postMessage
+    ↓
+detail provider receives message
+    ↓
+taskStore.archiveTask(taskId)
+    ↓
+task.archivedAt = timestamp
+    ↓
+save()
+    ↓
+changeEmitter.fire()
+    ↓
+all subscribed providers receive event
+    ↓
+workspace gets getActiveTasks()
+    ↓
+workspace sends tasksUpdated
+    ↓
+webview updates DOM
+```
+
+Find exactly where this chain currently breaks.
+
+Do not assume the problem is in TaskStore.
+
+The TaskStore implementation already appears fundamentally correct.
+
+---
+
+# 23. LIKELY ROOT CAUSE
+
+The likely issue is not:
+
+```ts
+getActiveTasks()
+```
+
+because it correctly filters:
+
+```ts
+!task.archivedAt
+```
+
+The likely issue is that the workspace provider sends:
+
+```ts
+tasksUpdated
+```
+
+but the webview does not fully consume that message and rebuild its task list.
+
+Confirm this by inspecting the actual current webview code.
+
+If confirmed, fix the UI synchronization rather than weakening the store logic.
+
+---
+
+# 24. DO NOT BREAK EXISTING FUNCTIONALITY
+
+The following already work and must continue working:
+
+* task scanning
+* task persistence
+* status updates
+* priority updates
+* archive success
+* success notifications
+* table view
+* Kanban view
+* Kanban drag and drop
+* task detail navigation
+* source-file navigation
+* filtering
+* searching
+* sorting
+* statistics
+* refresh
+
+After making changes, test each affected behavior.
+
+---
+
+# 25. IMPORTANT WEBVIEW CONSIDERATIONS
+
+The extension uses VS Code Webviews.
+
+Remember:
+
+```ts
+acquireVsCodeApi()
+```
+
+exists only inside the webview.
+
+The extension host cannot directly manipulate the DOM.
+
+The host communicates using:
+
+```ts
+panel.webview.postMessage(...)
+```
+
+The webview communicates using:
+
+```ts
+vscode.postMessage(...)
+```
+
+Therefore:
+
+```text
+Extension Host
+      ↓
+postMessage()
+      ↓
+window.addEventListener("message")
+      ↓
+DOM update
+```
+
+is the correct synchronization mechanism.
+
+---
+
+# 26. PREFERRED IMPLEMENTATION STRATEGY
+
+If the current code structure permits it, refactor the workspace webview JavaScript so that rendering is centralized.
+
+Conceptually:
+
+```text
+renderTasks(tasks)
+    ├── render table rows
+    ├── bind interactions
+    ├── apply filters
+    └── render Kanban
+```
+
+Then:
+
+```text
+initial page load
+    ↓
+renderTasks(initialTasks)
+```
+
+and:
+
+```text
+tasksUpdated
+    ↓
+renderTasks(message.tasks)
+```
+
+This is preferable to having separate pieces of code independently manipulate the task DOM.
+
+However, do not perform a huge rewrite if a small safe change is sufficient.
+
+Use the least invasive solution that produces a clean architecture.
+
+---
+
+# 27. IMPORTANT: FILTER STATE
+
+When `tasksUpdated` occurs, do not accidentally reset:
+
+* search text
+* selected status
+* selected type
+* selected priority
+* selected sort order
+* current table/Kanban view
+
+For example:
+
+```text
+User searches "authentication"
+       ↓
+Task is archived elsewhere
+       ↓
+tasksUpdated
+       ↓
+search should remain "authentication"
+```
+
+Likewise:
+
+```text
+User is viewing Kanban
+       ↓
+Task is archived
+       ↓
+tasksUpdated
+       ↓
+Kanban remains active
+       ↓
+archived card disappears
+```
+
+---
+
+# 28. CURRENT STATUS UPDATE BEHAVIOR
+
+Status updates currently send:
+
+```ts
+{
+  command: "updateStatus",
+  taskId,
+  status
+}
+```
+
+The host calls:
+
+```ts
+taskStore.updateTaskStatus()
+```
+
+which ultimately calls:
+
+```ts
+updateTask()
+```
+
+and:
+
+```ts
+changeEmitter.fire()
+```
+
+The host additionally sends:
+
+```ts
+statusUpdated
+```
+
+This is somewhat redundant because the store change subscription also sends:
+
+```ts
+tasksUpdated
+statsUpdated
+```
+
+Do not remove existing behavior unless you verify that it is no longer needed.
+
+Eventually the architecture could be simplified around `tasksUpdated`, but that is a separate refactoring task.
+
+---
+
+# 29. CURRENT PRIORITY UPDATE BEHAVIOR
+
+Similarly:
+
+```ts
+updateTaskPriority()
+```
+
+updates the store and fires the change event.
+
+The host sends:
+
+```text
+priorityUpdated
+```
+
+and the generic store subscription sends:
+
+```text
+tasksUpdated
+statsUpdated
+```
+
+Preserve current working behavior while fixing the archive synchronization.
+
+---
+
+# 30. ARCHIVED TASKS UI
+
+Inspect whether the project already has:
+
+* archived task list
+* archive page
+* archived filter
+* unarchive UI
+* archive command
+
+If one exists, it should use:
+
+```ts
+getArchivedTasks()
+```
+
+rather than manually filtering arbitrary arrays.
+
+If it does not exist, do not invent a whole archived-task system unless the project requirements explicitly call for it.
+
+The immediate requirement is that archived tasks disappear from active lists.
+
+---
+
+# 31. ERROR HANDLING
+
+Archive failure should:
+
+* show an error message
+* leave the task visible
+* keep the UI consistent with the store
+
+Archive success should:
+
+* show success feedback
+* update the store
+* cause active lists to remove the task
+
+Avoid optimistic permanent DOM changes before the store confirms success unless there is a clear rollback mechanism.
+
+---
+
+# 32. PERSISTENCE
+
+Tasks are persisted with:
+
+```ts
+workspaceState.update(
+  TASKS_KEY,
+  this.tasks
+);
+```
+
+Do not introduce another persistence layer.
+
+Do not use localStorage for task state.
+
+Do not use a separate webview-side task database.
+
+The extension host's TaskStore remains authoritative.
+
+---
+
+# 33. CODING STYLE
+
+Follow the repository's existing style.
+
+Do not unnecessarily introduce:
+
+* React
+* external state libraries
+* Redux
+* Zustand
+* databases
+* Firebase
+* new dependencies
+
+This is a VS Code extension and should remain lightweight.
+
+Prefer existing TypeScript/Vscode APIs.
+
+---
+
+# 34. TESTING REQUIREMENTS
+
+After implementation, verify at minimum:
+
+## Archive
+
+```text
+Open task detail
+→ Archive
+→ success message
+→ return to workspace
+→ task disappears
+```
+
+## Archive from another active UI
+
+If applicable:
+
+```text
+Archive task
+→ active table removes task
+→ Kanban removes card
+→ statistics update
+```
+
+## Persistence
+
+```text
+Archive task
+→ reload extension/window
+→ task remains archived
+```
+
+## Rescan
+
+```text
+Archive task
+→ refresh/rescan
+→ task must NOT reappear
+```
+
+## Unarchive
+
+If supported:
+
+```text
+Unarchive
+→ archivedAt removed
+→ task becomes active again
+→ active task list displays it
+```
+
+## Filters
+
+```text
+Archive currently filtered task
+→ task disappears
+→ filters remain intact
+```
+
+## Kanban
+
+```text
+Archive task while Kanban is visible
+→ card disappears
+→ column count updates
+```
+
+## Stats
+
+```text
+Archive task
+→ total decreases
+→ relevant status count decreases
+```
+
+---
+
+# 35. DO NOT CLAIM SUCCESS WITHOUT TESTING
+
+After editing:
+
+1. Run TypeScript compilation/build.
+2. Fix compilation errors.
+3. Run available tests.
+4. Inspect extension host logs if necessary.
+5. Launch the extension.
+6. Reproduce the archive scenario.
+7. Verify the actual UI.
+
+If tests are unavailable, explicitly reason through the flow and inspect all affected paths.
+
+---
+
+# 36. SEARCH STRATEGY
+
+Use repository-wide searches for:
+
+```text
+archiveTask(
+onDidChange
+tasksUpdated
+getActiveTasks
+getTasks
+getArchivedTasks
+archivedAt
+openTaskDetails
+updateTaskStatus
+updateTaskPriority
+refreshTasks
+```
+
+Also search for:
+
+```text
+CodeTask
+TASKS_KEY
+reconcileTasks
+```
+
+This will reveal all consumers that might need synchronization.
+
+---
+
+# 37. IMPORTANT ARCHITECTURAL RULE
+
+Never make the webview the source of truth.
+
+The webview is only a presentation layer.
+
+Correct:
+
+```text
+TaskStore
+   ↓
+Webview
+```
+
+Incorrect:
+
+```text
+Webview
+   ↓
+local task state
+   ↓
+TaskStore
+```
+
+The webview may temporarily maintain UI state such as:
+
+* selected filters
+* search query
+* active view
+
+but task data itself comes from the TaskStore.
+
+---
+
+# 38. SECONDARY QUALITY IMPROVEMENT
+
+While investigating, look for duplicate logic in the workspace webview.
+
+There are currently multiple places where:
+
+* task rows are queried
+* filters are applied
+* Kanban is rendered
+* event listeners are attached
+
+Do not aggressively refactor unless necessary.
+
+But if a small extraction makes the `tasksUpdated` implementation reliable, do it.
+
+Good candidates are:
+
+```text
+renderTasks()
+renderKanban()
+bindTaskEvents()
+filterTasks()
+sortRows()
+```
+
+---
+
+# 39. WHAT I EXPECT FROM YOU
+
+Your job is not simply to answer me with code snippets.
+
+You are an IDE coding agent.
+
+Therefore:
+
+1. Inspect the repository.
+2. Identify the actual files.
+3. Trace the architecture.
+4. Identify the exact root cause.
+5. Edit the relevant files directly.
+6. Keep changes minimal and maintainable.
+7. Build/test the project.
+8. Report what changed.
+9. Report any remaining issues.
+
+Do not ask me to manually paste files that you can already inspect in the repository.
+
+---
+
+# 40. IMMEDIATE TASK
+
+Start with this exact objective:
+
+> Fix the synchronization between TaskStore archive operations and the active task lists.
+
+The required result is:
+
+```text
+Archive task
+    ↓
+TaskStore.archiveTask()
+    ↓
+archivedAt assigned
+    ↓
+TaskStore persisted
+    ↓
+onDidChange fired
+    ↓
+WorkspaceProvider receives event
+    ↓
+getActiveTasks()
+    ↓
+archived task excluded
+    ↓
+tasksUpdated sent to webview
+    ↓
+webview receives tasksUpdated
+    ↓
+active task DOM is rebuilt/updated
+    ↓
+archived task disappears from:
+    - table
+    - Kanban
+    - filtered results
+    - task counts
+```
+
+Do not stop after making the archive success message appear.
+
+The UI must reflect the new store state.
+
+---
+
+# 41. FINAL ACCEPTANCE CRITERIA
+
+The implementation is considered complete only when all of the following are true:
+
+* `TaskStore.archiveTask()` persists archive state.
+* `TaskStore.onDidChange` fires after archive.
+* WorkspaceProvider receives the change.
+* WorkspaceProvider requests active tasks.
+* Archived tasks are excluded.
+* WorkspaceProvider sends updated tasks to the webview.
+* Webview handles `tasksUpdated`.
+* Webview removes archived tasks from the active table.
+* Kanban no longer shows archived tasks.
+* Statistics remain based on active tasks.
+* Current search/filter/sort state remains functional.
+* Existing status/priority editing still works.
+* Existing task detail navigation still works.
+* Rescanning does not resurrect archived tasks.
+* Unarchive works if already implemented.
+* The project compiles successfully.
+* No unnecessary dependencies are introduced.
+* No existing working feature is broken.
+
+---
+
+# 42. IMPORTANT FINAL INSTRUCTION
+
+Before changing code, inspect the repository and explain to yourself the actual data flow.
+
+Then make the smallest set of changes required to produce the correct behavior.
+
+If the current architecture already supports the behavior, **repair the missing synchronization instead of redesigning the entire application**.
+
+After implementation, summarize:
+
+```text
+1. Root cause
+2. Files changed
+3. Changes made
+4. Why the fix works
+5. Tests/build performed
+6. Any remaining concerns
+```
+
+Proceed directly with repository inspection and implementation.

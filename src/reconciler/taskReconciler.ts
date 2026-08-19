@@ -4,7 +4,6 @@ export function reconcileTasks(
   scannedTasks: CodeTask[],
   existingTasks: CodeTask[],
 ): CodeTask[] {
-
   const existingById = new Map(
     existingTasks.map((task) => [
       task.id,
@@ -12,28 +11,46 @@ export function reconcileTasks(
     ]),
   );
 
-  return scannedTasks.map(
-    (scannedTask) => {
+  return scannedTasks.map((scannedTask) => {
+    const existingTask =
+      existingById.get(scannedTask.id);
 
-      const existing =
-        existingById.get(scannedTask.id);
+    /*
+     * ----------------------------------------------------
+     * NEW TASK
+     * ----------------------------------------------------
+     */
 
-      if (!existing) {
-        return scannedTask;
-      }
+    if (!existingTask) {
+      return scannedTask;
+    }
 
-      return {
-        ...scannedTask,
+    /*
+     * ----------------------------------------------------
+     * EXISTING TASK
+     * ----------------------------------------------------
+     *
+     * Preserve user-managed fields while allowing
+     * scanner-managed fields to be refreshed.
+     */
 
-        status: existing.status,
-        priority: existing.priority,
+    return {
+      ...scannedTask,
 
-        createdAt:
-          existing.createdAt,
+      status:
+        existingTask.status,
 
-        updatedAt:
-          existing.updatedAt,
-      };
-    },
-  );
+      priority:
+        existingTask.priority,
+
+      createdAt:
+        existingTask.createdAt,
+
+      updatedAt:
+        existingTask.updatedAt,
+
+      archivedAt:
+        existingTask.archivedAt,
+    };
+  });
 }

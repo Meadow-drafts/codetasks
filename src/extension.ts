@@ -1,8 +1,37 @@
 import * as vscode from "vscode";
+import { CodeTask } from "./models/task";
 import { scanWorkspace } from "./scanner/taskScanner";
 import { TaskStore } from "./store/taskStore";
 import { TaskTreeProvider } from "./providers/taskTreeProvider";
 import { TaskWorkspaceProvider } from "./webview/taskWorkspace";
+import { TaskDetailsProvider } from "./webview/taskDetails";
+import { TaskArchivedProvider } from "./webview/taskArchived";
+
+async function pickTask(
+  tasks: CodeTask[],
+  placeHolder: string,
+): Promise<CodeTask | undefined> {
+  if (tasks.length === 0) {
+    vscode.window.showInformationMessage("CodeTasks: No tasks available.");
+    return undefined;
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    tasks.map((task) => ({
+      label: task.title,
+      description: `${task.type} • ${task.status} • ${task.priority}`,
+      detail: `${task.filePath}:${task.line + 1}`,
+      task,
+    })),
+    {
+      placeHolder,
+      matchOnDescription: true,
+      matchOnDetail: true,
+    },
+  );
+
+  return picked?.task;
+}
 
 export async function activate(context: vscode.ExtensionContext) {
   console.log("CodeTasks is now active!");
@@ -22,6 +51,16 @@ export async function activate(context: vscode.ExtensionContext) {
   const taskTreeProvider = new TaskTreeProvider(taskStore);
 
   const taskWorkspaceProvider = new TaskWorkspaceProvider(
+    context.extensionUri,
+    taskStore,
+  );
+
+  const taskDetailsProvider = new TaskDetailsProvider(
+    context.extensionUri,
+    taskStore,
+  );
+
+  const taskArchivedProvider = new TaskArchivedProvider(
     context.extensionUri,
     taskStore,
   );
@@ -56,7 +95,10 @@ export async function activate(context: vscode.ExtensionContext) {
   const updateTaskStatusCommand = vscode.commands.registerCommand(
     "codetasks.updateTaskStatus",
     async (task) => {
-      if (!task) {
+      const targetTask =
+        task ?? (await pickTask(taskStore.getActiveTasks(), "Select a task"));
+
+      if (!targetTask) {
         return;
       }
 
@@ -92,7 +134,10 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const updated = await taskStore.updateTaskStatus(task.id, status.value);
+      const updated = await taskStore.updateTaskStatus(
+        targetTask.id,
+        status.value,
+      );
 
       if (!updated) {
         return;
@@ -101,6 +146,91 @@ export async function activate(context: vscode.ExtensionContext) {
       taskTreeProvider.refresh();
     },
   );
+
+  const restoreTaskCommand = vscode.commands.registerCommand(
+    "codetasks.restoreTask",
+    async (task) => {
+      const targetTask =
+        task ??
+        (await pickTask(
+          taskStore.getArchivedTasks(),
+          "Select an archived task to restore",
+        ));
+
+      if (!targetTask) {
+        return;
+      }
+
+      const updated = await taskStore.unarchiveTask(targetTask.id);
+
+      if (!updated) {
+        return;
+      }
+
+      taskTreeProvider.refresh();
+
+      vscode.window.showInformationMessage(
+        `Task "${targetTask.title}" restored.`,
+      );
+    },
+  );
+
+  const archiveTaskCommand = vscode.commands.registerCommand(
+    "codetasks.archiveTask",
+    async (task) => {
+      const targetTask =
+        task ??
+        (await pickTask(
+          taskStore.getActiveTasks(),
+          "Select a task to archive",
+        ));
+
+      if (!targetTask) {
+        return;
+      }
+
+      const updated = await taskStore.archiveTask(targetTask.id);
+
+      if (!updated) {
+        return;
+      }
+
+      taskTreeProvider.refresh();
+
+      vscode.window.showInformationMessage(
+        `Task "${targetTask.title}" archived.`,
+      );
+    },
+  );
+
+  const markTaskDoneCommand = vscode.commands.registerCommand(
+    "codetasks.markTaskDone",
+    async (task) => {
+      const targetTask =
+        task ??
+        (await pickTask(
+          taskStore.getActiveTasks(),
+          "Select a task to mark done",
+        ));
+
+      if (!targetTask) {
+        return;
+      }
+
+      const updated = await taskStore.updateTaskStatus(targetTask.id, "done");
+
+      if (!updated) {
+        return;
+      }
+
+      taskTreeProvider.refresh();
+
+      vscode.window.showInformationMessage(
+        `Task "${targetTask.title}" marked done.`,
+      );
+    },
+  );
+
   const refreshTasksCommand = vscode.commands.registerCommand(
     "codetasks.refreshTasks",
     async () => {
@@ -112,8 +242,26 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(refreshTasksCommand);
   context.subscriptions.push(updateTaskStatusCommand);
+  context.subscriptions.push(restoreTaskCommand);
+  context.subscriptions.push(archiveTaskCommand);
+  context.subscriptions.push(markTaskDoneCommand);
 
   context.subscriptions.push(openTaskCommand);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "codetasks.openTaskDetails",
+      (taskId: string) => {
+        taskDetailsProvider.open(taskId);
+      },
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("codetasks.openArchivedTasks", () => {
+      taskArchivedProvider.open();
+    }),
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("codetasks.openWorkspace", () => {

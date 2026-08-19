@@ -2,8 +2,11 @@ import * as vscode from "vscode";
 import { CodeTask } from "../models/task";
 import { reconcileTasks } from "../reconciler/taskReconciler";
 
-
 const TASKS_KEY = "codetasks.tasks";
+
+type EditableTaskFields = Partial<
+  Pick<CodeTask, "title" | "description" | "status" | "priority">
+>;
 
 export class TaskStore {
   private tasks: CodeTask[] = [];
@@ -28,63 +31,155 @@ export class TaskStore {
     await this.workspaceState.update(TASKS_KEY, this.tasks);
   }
 
-async setTasks(
-  scannedTasks: CodeTask[],
-): Promise<void> {
+  async setTasks(scannedTasks: CodeTask[]): Promise<void> {
+    this.tasks = reconcileTasks(scannedTasks, this.tasks);
 
-  this.tasks = reconcileTasks(
-    scannedTasks,
-    this.tasks,
-  );
+    await this.save();
 
-  await this.save();
-
-  this.changeEmitter.fire();
-}
+    this.changeEmitter.fire();
+  }
 
   getTasks(): CodeTask[] {
     return [...this.tasks];
   }
 
+  getActiveTasks(): CodeTask[] {
+    return this.tasks.filter((task) => !task.archivedAt);
+  }
+
+  getArchivedTasks(): CodeTask[] {
+    return this.tasks.filter((task) => !!task.archivedAt);
+  }
+
   getTaskCount(): number {
-    return this.tasks.length;
+    return this.getActiveTasks().length;
+  }
+
+ getTaskStats(): {
+  total: number;
+  open: number;
+  inProgress: number;
+  blocked: number;
+  review: number;
+  done: number;
+} {
+  const activeTasks =
+    this.getActiveTasks();
+
+  return {
+    total: activeTasks.length,
+
+    open:
+      activeTasks.filter(
+        (task) => task.status === "open",
+      ).length,
+
+    inProgress:
+      activeTasks.filter(
+        (task) => task.status === "in-progress",
+      ).length,
+
+    blocked:
+      activeTasks.filter(
+        (task) => task.status === "blocked",
+      ).length,
+
+    review:
+      activeTasks.filter(
+        (task) => task.status === "review",
+      ).length,
+
+    done:
+      activeTasks.filter(
+        (task) => task.status === "done",
+      ).length,
+  };
+}
+
+  async updateTask(
+    taskId: string,
+    updates: EditableTaskFields,
+  ): Promise<boolean> {
+    const task = this.tasks.find((currentTask) => currentTask.id === taskId);
+
+    if (!task) {
+      return false;
+    }
+
+    /*
+     * Apply only the fields supplied
+     * by the caller.
+     */
+    Object.assign(task, updates);
+
+    /*
+     * Every successful task modification
+     * updates the modification timestamp.
+     */
+    task.updatedAt = new Date().toISOString();
+
+    /*
+     * Persist the updated task list.
+     */
+    await this.save();
+
+    /*
+     * Notify every consumer of the store.
+     */
+    this.changeEmitter.fire();
+
+    return true;
   }
 
   async updateTaskStatus(
     taskId: string,
     status: CodeTask["status"],
   ): Promise<boolean> {
-    const task = this.tasks.find((task) => task.id === taskId);
-
-    if (!task) {
-      return false;
-    }
-
-    task.status = status;
-
-    task.updatedAt = new Date().toISOString();
-
-    await this.save();
-    this.changeEmitter.fire();
-
-    return true;
+    return this.updateTask(taskId, {
+      status,
+    });
   }
 
   async updateTaskPriority(
     taskId: string,
     priority: CodeTask["priority"],
   ): Promise<boolean> {
+    return this.updateTask(taskId, {
+      priority,
+    });
+  }
+
+  async archiveTask(taskId: string): Promise<boolean> {
     const task = this.tasks.find((task) => task.id === taskId);
 
     if (!task) {
       return false;
     }
 
-    task.priority = priority;
+    task.archivedAt = new Date().toISOString();
 
     task.updatedAt = new Date().toISOString();
 
     await this.save();
+
+    this.changeEmitter.fire();
+
+    return true;
+  }
+
+  async unarchiveTask(taskId: string): Promise<boolean> {
+    const task = this.tasks.find((task) => task.id === taskId);
+
+    if (!task) {
+      return false;
+    }
+
+    delete task.archivedAt;
+
+    task.updatedAt = new Date().toISOString();
+
+    await this.save();
+
     this.changeEmitter.fire();
 
     return true;
@@ -94,5 +189,7 @@ async setTasks(
     this.tasks = [];
 
     void this.save();
+
+    this.changeEmitter.fire();
   }
 }

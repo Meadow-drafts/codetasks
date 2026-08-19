@@ -1,58 +1,28 @@
+export type TaskType = "TODO" | "FIXME" | "BUG" | "HACK" | "REFACTOR" | "TASK";
 
+export type TaskStatus = "open" | "in-progress" | "blocked" | "review" | "done";
 
-export type TaskType =
-	| 'TODO'
-	| 'FIXME'
-	| 'BUG'
-	| 'HACK'
-	| 'REFACTOR'
-	| 'TASK';
-
-export type TaskStatus =
-	| 'open'
-	| 'in-progress'
-	| 'blocked'
-	| 'review'
-	| 'done';
-
-export type TaskPriority =
-	| 'low'
-	| 'medium'
-	| 'high'
-	| 'critical';
+export type TaskPriority = "low" | "medium" | "high" | "critical";
 
 export interface CodeTask {
-	id: string;
-	type: TaskType;
-	title: string;
+  id: string;
 
-	filePath: string;
-	line: number;
+  type: TaskType;
 
-	status: TaskStatus;
-	priority: TaskPriority;
+  title: string;
 
-	createdAt: string;
-}
+  description?: string;
 
-export interface CodeTask {
-    id: string;
+  filePath: string;
 
-    type: TaskType;
+  line: number;
 
-    title: string;
+  status: TaskStatus;
 
-    description?: string;
+  priority: TaskPriority;
 
-    filePath: string;
+  createdAt: string;
 
-    line: number;
-
-    status: TaskStatus;
-
-    priority: TaskPriority;
-
-    createdAt: string;
-
-    updatedAt: string;
+  updatedAt: string;
+  archivedAt?: string;
 }
