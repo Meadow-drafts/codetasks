@@ -84,6 +84,12 @@ export class TaskWorkspaceProvider {
       storeChangeSubscription.dispose();
     });
 
+    panel.onDidChangeViewState((event) => {
+      if (event.webviewPanel.visible) {
+        postWorkspaceSnapshot();
+      }
+    });
+
     panel.webview.onDidReceiveMessage(
       async (message) => {
         console.log("CodeTasks Webview message:", message);
@@ -263,6 +269,7 @@ export class TaskWorkspaceProvider {
 					data-status="${task.status}"
 					data-type="${task.type}"
 					data-priority="${task.priority}"
+					data-assignee="${this.escapeHtml(task.assignee || "")}"
 					data-created-at="${this.escapeHtml(task.createdAt)}"
 					data-updated-at="${this.escapeHtml(task.updatedAt)}"
 					data-file-name="${this.escapeHtml(
@@ -271,7 +278,19 @@ export class TaskWorkspaceProvider {
 					data-line="${task.line + 1}"
 				>
 								<td>
-									${this.escapeHtml(task.title)}
+										${this.escapeHtml(task.title)}
+								</td>
+
+								<td>
+									<span class="table-assignee ${
+                    task.assignee ? "" : "empty"
+                  }">
+										${
+                      task.assignee
+                        ? this.escapeHtml(task.assignee)
+                        : "-"
+                    }
+									</span>
 								</td>
 
 								<td>
@@ -283,7 +302,7 @@ export class TaskWorkspaceProvider {
 								</td>
 
 								<td>
-								<select
+									<select
 								class="status-select"
 								data-task-id="${this.escapeHtml(task.id)}"
 								data-current-status="${task.status}"
@@ -358,7 +377,7 @@ export class TaskWorkspaceProvider {
 							Critical
 						</option>
 					</select>
-				</td>
+								</td>
 
 								<td>
 									${this.escapeHtml(task.filePath)}:${task.line + 1}
@@ -483,13 +502,41 @@ export class TaskWorkspaceProvider {
 							--vscode-list-hoverBackground
 						);
 					}
-					.task-row {
-						cursor: pointer;
-					}
+						.task-row {
+							cursor: pointer;
+						}
 
-					.task-row:hover {
-						background: var(--vscode-list-hoverBackground);
-					}
+						.task-assignee {
+							display: block;
+							margin-top: 4px;
+							font-size: 12px;
+							color:
+								var(--vscode-descriptionForeground);
+						}
+
+						.table-assignee {
+							display: inline-flex;
+							align-items: center;
+							padding: 2px 8px;
+							border-radius: 999px;
+							font-size: 12px;
+							color: var(--vscode-foreground);
+							background: color-mix(
+								in srgb,
+								var(--vscode-button-secondaryBackground) 35%,
+								transparent
+							);
+						}
+
+						.table-assignee.empty {
+							color: var(--vscode-descriptionForeground);
+							background: transparent;
+							padding-left: 0;
+						}
+
+						.task-row:hover {
+							background: var(--vscode-list-hoverBackground);
+						}
 						.status-select.updating {
 						opacity: 0.6;
 						cursor: wait;
@@ -694,6 +741,25 @@ export class TaskWorkspaceProvider {
 					gap: 8px;
 
 					margin-bottom: 10px;
+				}
+
+				.kanban-card-assignee {
+					display: inline-flex;
+					align-items: center;
+					padding: 2px 7px;
+					border-radius: 999px;
+					font-size: 11px;
+					font-weight: 600;
+					color: var(--vscode-foreground);
+					background: color-mix(
+						in srgb,
+						var(--vscode-button-secondaryBackground) 35%,
+						transparent
+					);
+				}
+
+				.kanban-card-assignee.empty {
+					display: none;
 				}
 
 
@@ -990,41 +1056,6 @@ export class TaskWorkspaceProvider {
 
 					</div>
 
-					<div class="count">
-						<span id="header-task-count">
-							${tasks.length} tasks
-						</span>
-
-						<span class="separator">·</span>
-
-						<span id="header-open-count">
-							${statusCounts.open} open
-						</span>
-
-						<span class="separator">·</span>
-
-						<span id="header-in-progress-count">
-							${statusCounts["in-progress"]} in progress
-						</span>
-
-						<span class="separator">·</span>
-
-						<span id="header-blocked-count">
-							${statusCounts.blocked} blocked
-						</span>
-
-						<span class="separator">·</span>
-
-						<span id="header-review-count">
-							${statusCounts.review} review
-						</span>
-
-						<span class="separator">·</span>
-
-						<span id="header-done-count">
-							${statusCounts.done} done
-						</span>
-					</div>
 					<div class="priority-summary">
 
 						<span id="header-critical-count">
@@ -1259,6 +1290,7 @@ export class TaskWorkspaceProvider {
 						<thead>						
 							<tr>
 								<th>Task</th>
+								<th>Assignee</th>
 								<th>Type</th>
 								<th>Status</th>
 								<th>Priority</th>
@@ -1372,6 +1404,8 @@ export class TaskWorkspaceProvider {
 						task.type +
 						'" data-priority="' +
 						task.priority +
+						'" data-assignee="' +
+						escapeHtml(task.assignee || "") +
 						'" data-created-at="' +
 						escapeHtml(task.createdAt) +
 						'" data-updated-at="' +
@@ -1385,7 +1419,18 @@ export class TaskWorkspaceProvider {
 						escapeHtml(task.title) +
 						"</td>" +
 						"<td>" +
+						(task.assignee
+							? '<span class="table-assignee">' +
+								escapeHtml(task.assignee) +
+							"</span>"
+							: '<span class="table-assignee empty">-</span>') +
+						"</td>" +
+						"<td>" +
+						'<span class="task-type-badge type-' +
+						escapeHtml(task.type.toLowerCase()) +
+						'">' +
 						escapeHtml(task.type) +
+						"</span>" +
 						"</td>" +
 						"<td>" +
 						'<select class="status-select" data-task-id="' +
@@ -1749,6 +1794,8 @@ export class TaskWorkspaceProvider {
 
 							const priority =
 								row.dataset.priority || "";
+							const assignee =
+								row.dataset.assignee || "";
 
 
 							const card =
@@ -1845,6 +1892,12 @@ export class TaskWorkspaceProvider {
 									'</span>' +
 
 								'</div>' +
+
+								(assignee
+									? '<div class="kanban-card-assignee">Assignee: ' +
+										escapeHtml(assignee) +
+									'</div>'
+									: '') +
 
 								'<div class="kanban-card-location">' +
 

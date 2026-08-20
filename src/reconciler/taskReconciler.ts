@@ -40,6 +40,9 @@ export function reconcileTasks(
       status:
         existingTask.status,
 
+      assignee:
+        existingTask.assignee,
+
       priority:
         existingTask.priority,
 

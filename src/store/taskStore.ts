@@ -5,7 +5,7 @@ import { reconcileTasks } from "../reconciler/taskReconciler";
 const TASKS_KEY = "codetasks.tasks";
 
 type EditableTaskFields = Partial<
-  Pick<CodeTask, "title" | "description" | "status" | "priority">
+  Pick<CodeTask, "title" | "description" | "assignee" | "status" | "priority">
 >;
 
 export class TaskStore {
@@ -60,6 +60,49 @@ export class TaskStore {
     await this.save();
 
     this.changeEmitter.fire();
+  }
+
+  async applyAssignees(
+    assigneesByTaskId: Record<string, string>,
+  ): Promise<void> {
+    let changed = false;
+
+    this.tasks = this.tasks.map((task) => {
+      const assignee = assigneesByTaskId[task.id];
+
+      if (task.assignee === assignee) {
+        return task;
+      }
+
+      changed = true;
+
+      if (!assignee) {
+        const { assignee: _removedAssignee, ...rest } = task;
+        return rest;
+      }
+
+      return {
+        ...task,
+        assignee,
+      };
+    });
+
+    if (!changed) {
+      return;
+    }
+
+    await this.save();
+    this.changeEmitter.fire();
+  }
+
+  getAssigneesByTaskId(): Record<string, string> {
+    return this.tasks.reduce<Record<string, string>>((acc, task) => {
+      if (task.assignee) {
+        acc[task.id] = task.assignee;
+      }
+
+      return acc;
+    }, {});
   }
 
   getTasks(): CodeTask[] {
@@ -169,6 +212,15 @@ export class TaskStore {
   ): Promise<boolean> {
     return this.updateTask(taskId, {
       priority,
+    });
+  }
+
+  async updateTaskAssignee(
+    taskId: string,
+    assignee: string | undefined,
+  ): Promise<boolean> {
+    return this.updateTask(taskId, {
+      assignee,
     });
   }
 

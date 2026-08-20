@@ -250,6 +250,11 @@ export class TaskArchivedProvider {
             color: var(--vscode-descriptionForeground);
             font-size: 12px;
           }
+          .task-assignee {
+            color: var(--vscode-descriptionForeground);
+            font-size: 12px;
+            margin-top: 4px;
+          }
           .badge {
             display: inline-flex;
             align-items: center;
@@ -501,6 +506,9 @@ export class TaskArchivedProvider {
               ' data-created-at="' + escapeHtml(task.createdAt) + '">',
               '<td>',
               '<div>' + escapeHtml(task.title) + '</div>',
+              task.assignee
+                ? '<div class="task-assignee">Assignee: ' + escapeHtml(task.assignee) + '</div>'
+                : '',
               '<div class="file">' + escapeHtml(task.filePath) + ":" + (task.line + 1) + '</div>',
               "</td>",
               "<td>",

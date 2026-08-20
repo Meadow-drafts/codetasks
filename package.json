@@ -49,6 +49,21 @@
           "default": false,
           "description": "Open the CodeTasks workspace automatically after activation if tasks are found."
         },
+        "codetasks.sharedAssigneesEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Store assignees in a repo-tracked `.codetasks/assignees.json` file so collaborators can see them."
+        },
+        "codetasks.sharedAssigneesFile": {
+          "type": "string",
+          "default": ".codetasks/assignees.json",
+          "description": "Relative path to the repo-tracked file used when shared assignees are enabled."
+        },
+        "codetasks.githubAssigneesEnabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Suggest assignee names from GitHub contributors in the task details editor when available."
+        },
         "codetasks.typeColors": {
           "type": "object",
           "default": {
@@ -76,12 +91,20 @@
       {
         "command": "codetasks.openWorkspace",
         "title": "Open Task Workspace",
-        "icon": "$(table)"
+        "icon": "$(book)"
       },
       {
         "command": "codetasks.openSettings",
         "title": "CodeTasks: Settings",
         "icon": "$(gear)"
+      },
+      {
+        "command": "codetasks.enableSharedAssignees",
+        "title": "CodeTasks: Enable Shared Assignees"
+      },
+      {
+        "command": "codetasks.disableSharedAssignees",
+        "title": "CodeTasks: Disable Shared Assignees"
       },
       {
         "command": "codetasks.updateTaskStatus",
@@ -152,11 +175,7 @@
           "when": "view == codetasks.taskView",
           "group": "navigation"
         },
-        {
-          "command": "codetasks.openArchivedTasks",
-          "when": "view == codetasks.taskView",
-          "group": "navigation@2"
-        },
+
         {
           "command": "codetasks.openSettings",
           "when": "view == codetasks.taskView",

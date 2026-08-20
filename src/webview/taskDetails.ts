@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { CodeTask, TaskPriority, TaskStatus } from "../models/task";
+import { GitHubAssigneeSuggestionService } from "../services/githubAssigneeSuggestionService";
 import { TaskStore } from "../store/taskStore";
 import { buildTaskTypeCssVariables } from "../theme/taskTypeColors";
 
@@ -7,6 +8,9 @@ export class TaskDetailsProvider {
   constructor(
     private readonly extensionUri: vscode.Uri,
     private readonly taskStore: TaskStore,
+    private readonly githubAssigneeSuggestionService:
+      | GitHubAssigneeSuggestionService
+      | undefined,
   ) {}
 
   open(taskId: string): void {
@@ -198,6 +202,11 @@ export class TaskDetailsProvider {
         const title =
           typeof message.title === "string" ? message.title.trim() : "";
 
+        const assignee =
+          typeof message.assignee === "string"
+            ? message.assignee.trim()
+            : "";
+
         const description =
           typeof message.description === "string"
             ? message.description.trim()
@@ -215,6 +224,7 @@ export class TaskDetailsProvider {
         const updated = await this.taskStore.updateTask(taskId, {
           title,
           description: description || undefined,
+          assignee: assignee || undefined,
         });
 
         if (!updated) {
@@ -243,6 +253,11 @@ export class TaskDetailsProvider {
 
         return;
       }
+
+      if (message.command === "loadGitHubAssignees") {
+        void this.loadGitHubAssignees(panel);
+        return;
+      }
     });
 
     panel.webview.html = this.getHtml(task);
@@ -267,9 +282,70 @@ export class TaskDetailsProvider {
     });
   }
 
+  private isGitHubAssigneeSuggestionsEnabled(): boolean {
+    return vscode.workspace
+      .getConfiguration("codetasks")
+      .get<boolean>("githubAssigneesEnabled", false);
+  }
+
+  private async loadGitHubAssignees(
+    panel: vscode.WebviewPanel,
+  ): Promise<void> {
+    if (!this.githubAssigneeSuggestionService) {
+      return;
+    }
+
+    try {
+      const assignees = await this.githubAssigneeSuggestionService.load(true);
+
+      panel.webview.postMessage({
+        command: "githubAssigneesUpdated",
+        assignees,
+      });
+    } catch (error) {
+      panel.webview.postMessage({
+        command: "githubAssigneesLoadFailed",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load GitHub contributors.",
+      });
+    }
+  }
+
   private getHtml(task: CodeTask): string {
     const taskTypeCssVars = buildTaskTypeCssVariables();
     const taskTypeClass = `type-${task.type.toLowerCase()}`;
+    const githubAssigneeSuggestionsEnabled =
+      this.isGitHubAssigneeSuggestionsEnabled();
+    const githubAssigneeRefreshButton =
+      githubAssigneeSuggestionsEnabled
+        ? `
+          <button
+            class="inline-button"
+            id="refresh-github-assignees"
+            type="button"
+          >
+            Refresh contributors
+          </button>
+        `
+        : "";
+    const githubAssigneeInputListAttribute =
+      githubAssigneeSuggestionsEnabled
+        ? 'list="github-assignee-suggestions"'
+        : "";
+    const githubAssigneeSuggestionMarkup =
+      githubAssigneeSuggestionsEnabled
+        ? `
+          <datalist id="github-assignee-suggestions"></datalist>
+          <div
+            class="hint"
+            id="github-assignee-hint"
+          >
+            GitHub contributor suggestions appear here when available.
+          </div>
+        `
+        : "";
 
     return `
     <!DOCTYPE html>
@@ -375,6 +451,50 @@ export class TaskDetailsProvider {
         .type-task {
           color: var(--codetasks-task-type-task);
           background: color-mix(in srgb, var(--codetasks-task-type-task) 12%, transparent);
+        }
+
+        .assignee {
+          display: inline-flex;
+          align-items: center;
+          padding: 3px 9px;
+          border-radius: 999px;
+          font-size: 12px;
+          color: var(--vscode-foreground);
+          background: color-mix(in srgb, var(--vscode-button-secondaryBackground) 35%, transparent);
+          margin-bottom: 0;
+        }
+
+        .assignee.empty {
+          color: var(--vscode-descriptionForeground);
+          background: transparent;
+          padding-left: 0;
+        }
+
+        .section-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .inline-button {
+          border: none;
+          background: transparent;
+          color: var(--vscode-textLink-foreground);
+          cursor: pointer;
+          font-size: 12px;
+          padding: 0;
+        }
+
+        .inline-button:disabled {
+          cursor: wait;
+          opacity: 0.7;
+        }
+
+        .hint {
+          margin-top: 6px;
+          color: var(--vscode-descriptionForeground);
+          font-size: 12px;
         }
 
         .section {
@@ -680,6 +800,26 @@ export class TaskDetailsProvider {
         </div>
 
 
+        <div class="section">
+
+          <label class="label">
+            Assignee
+          </label>
+
+          <div
+            class="assignee ${task.assignee ? "" : "empty"}"
+            id="task-assignee"
+          >
+            ${
+              task.assignee
+                ? this.escapeHtml(task.assignee)
+                : "Unassigned"
+            }
+          </div>
+
+        </div>
+
+
         <!-- DESCRIPTION -->
 
         <div class="section">
@@ -960,6 +1100,32 @@ export class TaskDetailsProvider {
 
         <div class="section">
 
+          <div class="section-header">
+            <label
+              class="label"
+              for="edit-assignee"
+            >
+              Assignee
+            </label>
+
+            ${githubAssigneeRefreshButton}
+          </div>
+
+          <input
+            id="edit-assignee"
+            type="text"
+            placeholder="Assign to someone..."
+            value="${this.escapeHtml(task.assignee || "")}"
+            ${githubAssigneeInputListAttribute}
+          />
+
+          ${githubAssigneeSuggestionMarkup}
+
+        </div>
+
+
+        <div class="section">
+
           <label
             class="label"
             for="edit-description"
@@ -1055,6 +1221,18 @@ export class TaskDetailsProvider {
 
         const editTitle =
           document.getElementById("edit-title");
+
+        const editAssignee =
+          document.getElementById("edit-assignee");
+
+        const refreshGitHubAssigneesButton =
+          document.getElementById("refresh-github-assignees");
+
+        const githubAssigneeSuggestions =
+          document.getElementById("github-assignee-suggestions");
+
+        const githubAssigneeHint =
+          document.getElementById("github-assignee-hint");
 
         const editDescription =
           document.getElementById("edit-description");
@@ -1185,6 +1363,39 @@ export class TaskDetailsProvider {
         }
 
 
+        if (refreshGitHubAssigneesButton) {
+
+          refreshGitHubAssigneesButton.addEventListener(
+            "click",
+            () => {
+
+              refreshGitHubAssigneesButton.disabled =
+                true;
+
+              refreshGitHubAssigneesButton.textContent =
+                "Refreshing...";
+
+
+              vscode.postMessage({
+                command: "loadGitHubAssignees"
+              });
+
+            }
+          );
+
+
+          setTimeout(
+            () => {
+              vscode.postMessage({
+                command: "loadGitHubAssignees"
+              });
+            },
+            0
+          );
+
+        }
+
+
         if (cancelButton) {
 
           cancelButton.addEventListener(
@@ -1217,6 +1428,11 @@ export class TaskDetailsProvider {
 
               const title =
                 editTitle.value.trim();
+
+              const assignee =
+                editAssignee
+                  ? editAssignee.value.trim()
+                  : "";
 
               const description =
                 editDescription.value.trim();
@@ -1256,6 +1472,9 @@ export class TaskDetailsProvider {
                 command: "saveTask",
 
                 title,
+
+                assignee:
+                  assignee || undefined,
 
                 description
               });
@@ -1497,6 +1716,65 @@ export class TaskDetailsProvider {
         }
 
 
+        function renderGitHubAssignees(
+          assignees
+        ) {
+
+          if (!githubAssigneeSuggestions) {
+            return;
+          }
+
+
+          githubAssigneeSuggestions.innerHTML =
+            "";
+
+
+          if (!Array.isArray(assignees) || assignees.length === 0) {
+
+            if (githubAssigneeHint) {
+
+              githubAssigneeHint.textContent =
+                "No GitHub contributor suggestions are available for this repository.";
+
+            }
+
+            return;
+          }
+
+
+          for (const assignee of assignees) {
+
+            if (!assignee || !assignee.login) {
+              continue;
+            }
+
+            const option =
+              document.createElement("option");
+
+            option.value =
+              assignee.login;
+
+            githubAssigneeSuggestions.appendChild(
+              option
+            );
+
+          }
+
+
+          if (githubAssigneeHint) {
+
+            githubAssigneeHint.textContent =
+              "Loaded " +
+              assignees.length +
+              " GitHub contributor" +
+              (assignees.length === 1 ? "" : "s") +
+              ".";
+
+          }
+
+        }
+
+
         /*
         * ==========================================================
         * UPDATE VIEW
@@ -1522,6 +1800,11 @@ export class TaskDetailsProvider {
               "task-description"
             );
 
+          const assignee =
+            document.getElementById(
+              "task-assignee"
+            );
+
           const status =
             document.getElementById(
               "status"
@@ -1530,6 +1813,11 @@ export class TaskDetailsProvider {
           const priority =
             document.getElementById(
               "priority"
+            );
+
+          const editAssigneeField =
+            document.getElementById(
+              "edit-assignee"
             );
 
 
@@ -1568,6 +1856,31 @@ export class TaskDetailsProvider {
           }
 
 
+          if (assignee) {
+
+            if (updatedTask.assignee) {
+
+              assignee.textContent =
+                updatedTask.assignee;
+
+              assignee.classList.remove(
+                "empty"
+              );
+
+            } else {
+
+              assignee.textContent =
+                "Unassigned";
+
+              assignee.classList.add(
+                "empty"
+              );
+
+            }
+
+          }
+
+
           if (status) {
 
             status.value =
@@ -1594,6 +1907,14 @@ export class TaskDetailsProvider {
             priority.classList.remove(
               "updating"
             );
+
+          }
+
+
+          if (editAssigneeField) {
+
+            editAssigneeField.value =
+              updatedTask.assignee || "";
 
           }
 
@@ -1856,6 +2177,68 @@ export class TaskDetailsProvider {
               showMessage(
                 "Failed to update priority."
               );
+
+              return;
+            }
+
+
+            /*
+            * --------------------------------------------------------
+            * GITHUB ASSIGNEES UPDATED
+            * --------------------------------------------------------
+            */
+
+            if (
+              message.command ===
+              "githubAssigneesUpdated"
+            ) {
+
+              renderGitHubAssignees(
+                message.assignees
+              );
+
+              if (refreshGitHubAssigneesButton) {
+
+                refreshGitHubAssigneesButton.disabled =
+                  false;
+
+                refreshGitHubAssigneesButton.textContent =
+                  "Refresh contributors";
+
+              }
+
+              return;
+            }
+
+
+            /*
+            * --------------------------------------------------------
+            * GITHUB ASSIGNEES FAILED
+            * --------------------------------------------------------
+            */
+
+            if (
+              message.command ===
+              "githubAssigneesLoadFailed"
+            ) {
+
+              if (githubAssigneeHint) {
+
+                githubAssigneeHint.textContent =
+                  message.error ||
+                  "Failed to load GitHub contributors.";
+
+              }
+
+              if (refreshGitHubAssigneesButton) {
+
+                refreshGitHubAssigneesButton.disabled =
+                  false;
+
+                refreshGitHubAssigneesButton.textContent =
+                  "Refresh contributors";
+
+              }
 
               return;
             }

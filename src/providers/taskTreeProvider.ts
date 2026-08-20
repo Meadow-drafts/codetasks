@@ -56,7 +56,7 @@ export class TaskTreeProvider implements vscode.TreeDataProvider<TreeNode> {
         kind: "workspace",
         label: "CodeTasks",
         description: `${this.taskStore.getTaskCount()} active`,
-        icon: "table",
+        icon: "book",
         command: "codetasks.openWorkspace",
       },
       {

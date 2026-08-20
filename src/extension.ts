@@ -13,6 +13,8 @@ import { TaskDetailsProvider } from "./webview/taskDetails";
 import { TaskArchivedProvider } from "./webview/taskArchived";
 import { TaskCodeLensProvider } from "./providers/taskCodeLensProvider";
 import { TaskDecorationManager } from "./providers/taskDecorationManager";
+import { SharedAssigneeStore } from "./store/sharedAssigneeStore";
+import { GitHubAssigneeSuggestionService } from "./services/githubAssigneeSuggestionService";
 
 async function pickTask(
   tasks: CodeTask[],
@@ -70,6 +72,20 @@ export async function activate(context: vscode.ExtensionContext) {
   const pendingFileRefreshes = new Map<string, ReturnType<typeof setTimeout>>();
 
   const getConfig = () => vscode.workspace.getConfiguration("codetasks");
+  const getWorkspaceFolder = () => vscode.workspace.workspaceFolders?.[0]?.uri;
+  const createSharedAssigneeStore = () =>
+    new SharedAssigneeStore(
+      getWorkspaceFolder(),
+      getConfig().get<string>(
+        "sharedAssigneesFile",
+        ".codetasks/assignees.json",
+      ) ?? ".codetasks/assignees.json",
+    );
+  const isSharedAssigneeModeEnabled = () =>
+    getConfig().get<boolean>("sharedAssigneesEnabled", false);
+  let sharedAssigneeStore = createSharedAssigneeStore();
+  const githubAssigneeSuggestionService =
+    new GitHubAssigneeSuggestionService();
 
   const refreshTasks = async () => {
     const excludeGlob =
@@ -81,6 +97,16 @@ export async function activate(context: vscode.ExtensionContext) {
     const tasks = await scanWorkspace(excludeGlob);
 
     await taskStore.setTasks(tasks);
+
+    if (isSharedAssigneeModeEnabled()) {
+      const assignees = await sharedAssigneeStore.load();
+
+      if (Object.keys(assignees).length > 0) {
+        await taskStore.applyAssignees(assignees);
+      } else {
+        await sharedAssigneeStore.save(taskStore.getAssigneesByTaskId());
+      }
+    }
 
     console.log(`CodeTasks found ${taskStore.getTaskCount()} task(s).`);
   };
@@ -97,6 +123,7 @@ export async function activate(context: vscode.ExtensionContext) {
   const taskDetailsProvider = new TaskDetailsProvider(
     context.extensionUri,
     taskStore,
+    githubAssigneeSuggestionService,
   );
 
   const taskArchivedProvider = new TaskArchivedProvider(
@@ -119,6 +146,16 @@ export async function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(taskDecorationManager);
 
+  context.subscriptions.push(
+    taskStore.onDidChange(() => {
+      if (!isSharedAssigneeModeEnabled()) {
+        return;
+      }
+
+      void sharedAssigneeStore.save(taskStore.getAssigneesByTaskId());
+    }),
+  );
+
   if (
     getConfig().get<boolean>("autoOpenWorkspaceOnStartup", false) &&
     taskStore.getTaskCount() > 0
@@ -127,7 +164,7 @@ export async function activate(context: vscode.ExtensionContext) {
   }
 
   context.subscriptions.push(
-    vscode.workspace.onDidChangeConfiguration((event) => {
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (event.affectsConfiguration("codetasks.codeLensEnabled")) {
         taskCodeLensProvider.refresh();
       }
@@ -138,6 +175,23 @@ export async function activate(context: vscode.ExtensionContext) {
 
       if (event.affectsConfiguration("codetasks.typeColors")) {
         taskDecorationManager.refresh();
+      }
+
+      if (
+        event.affectsConfiguration("codetasks.sharedAssigneesEnabled") ||
+        event.affectsConfiguration("codetasks.sharedAssigneesFile")
+      ) {
+        sharedAssigneeStore = createSharedAssigneeStore();
+
+        if (isSharedAssigneeModeEnabled()) {
+          const assignees = await sharedAssigneeStore.load();
+
+          if (Object.keys(assignees).length > 0) {
+            await taskStore.applyAssignees(assignees);
+          } else {
+            await sharedAssigneeStore.save(taskStore.getAssigneesByTaskId());
+          }
+        }
       }
 
       if (event.affectsConfiguration("codetasks.scanExcludeGlobs")) {
@@ -239,6 +293,28 @@ export async function activate(context: vscode.ExtensionContext) {
       void vscode.commands.executeCommand(
         "workbench.action.openSettings",
         "codetasks",
+      );
+    },
+  );
+
+  const enableSharedAssigneesCommand = vscode.commands.registerCommand(
+    "codetasks.enableSharedAssignees",
+    async () => {
+      await getConfig().update(
+        "sharedAssigneesEnabled",
+        true,
+        vscode.ConfigurationTarget.Workspace,
+      );
+    },
+  );
+
+  const disableSharedAssigneesCommand = vscode.commands.registerCommand(
+    "codetasks.disableSharedAssignees",
+    async () => {
+      await getConfig().update(
+        "sharedAssigneesEnabled",
+        false,
+        vscode.ConfigurationTarget.Workspace,
       );
     },
   );
@@ -509,6 +585,8 @@ export async function activate(context: vscode.ExtensionContext) {
 
   context.subscriptions.push(refreshTasksCommand);
   context.subscriptions.push(openSettingsCommand);
+  context.subscriptions.push(enableSharedAssigneesCommand);
+  context.subscriptions.push(disableSharedAssigneesCommand);
   context.subscriptions.push(updateTaskStatusCommand);
   context.subscriptions.push(restoreTaskCommand);
   context.subscriptions.push(archiveTaskCommand);

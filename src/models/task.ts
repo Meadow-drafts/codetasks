@@ -13,6 +13,8 @@ export interface CodeTask {
 
   description?: string;
 
+  assignee?: string;
+
   filePath: string;
 
   line: number;

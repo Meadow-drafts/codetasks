@@ -2,6 +2,7 @@ import * as assert from "assert";
 import * as vscode from "vscode";
 import { CodeTask } from "../models/task";
 import { createTaskId } from "../scanner/taskScanner";
+import { parseGitHubRemoteUrl } from "../services/githubAssigneeSuggestionService";
 import { reconcileTasks } from "../reconciler/taskReconciler";
 import { TaskStore } from "../store/taskStore";
 
@@ -40,6 +41,7 @@ function createTask(overrides: Partial<CodeTask> = {}): CodeTask {
     type: "TODO",
     title: "Initial task",
     description: "Initial description",
+    assignee: undefined,
     filePath: "/tmp/example.ts",
     line: 3,
     status: "open",
@@ -87,6 +89,35 @@ suite("CodeTasks Store", () => {
     assert.notStrictEqual(first, second);
   });
 
+  test("parseGitHubRemoteUrl handles https remotes", () => {
+    const parsed = parseGitHubRemoteUrl(
+      "https://github.com/meadow/codetasks.git",
+    );
+
+    assert.ok(parsed);
+    assert.strictEqual(parsed?.host, "github.com");
+    assert.strictEqual(parsed?.owner, "meadow");
+    assert.strictEqual(parsed?.repo, "codetasks");
+    assert.strictEqual(parsed?.apiBaseUrl, "https://api.github.com");
+  });
+
+  test("parseGitHubRemoteUrl handles ssh remotes", () => {
+    const parsed = parseGitHubRemoteUrl(
+      "git@github.com:meadow/codetasks.git",
+    );
+
+    assert.ok(parsed);
+    assert.strictEqual(parsed?.host, "github.com");
+    assert.strictEqual(parsed?.owner, "meadow");
+    assert.strictEqual(parsed?.repo, "codetasks");
+  });
+
+  test("parseGitHubRemoteUrl ignores non-github remotes", () => {
+    const parsed = parseGitHubRemoteUrl("https://example.com/meadow/codetasks");
+
+    assert.strictEqual(parsed, undefined);
+  });
+
   test("reconcileTasks preserves user-managed task state", () => {
     const scannedTask = createTask({
       title: "Scanned title",
@@ -99,6 +130,7 @@ suite("CodeTasks Store", () => {
     const existingTask = createTask({
       title: "Existing title",
       description: "Existing description",
+      assignee: "alice",
       status: "done",
       priority: "critical",
       createdAt: "2024-01-01T00:00:00.000Z",
@@ -110,6 +142,7 @@ suite("CodeTasks Store", () => {
 
     assert.strictEqual(result.title, scannedTask.title);
     assert.strictEqual(result.description, scannedTask.description);
+    assert.strictEqual(result.assignee, existingTask.assignee);
     assert.strictEqual(result.status, existingTask.status);
     assert.strictEqual(result.priority, existingTask.priority);
     assert.strictEqual(result.createdAt, existingTask.createdAt);
@@ -158,6 +191,7 @@ suite("CodeTasks Store", () => {
     const updated = await store.updateTask(task.id, {
       title: "Updated title",
       description: "Updated description",
+      assignee: "alice",
       status: "review",
       priority: "high",
     });
@@ -168,6 +202,7 @@ suite("CodeTasks Store", () => {
 
     assert.strictEqual(result.title, "Updated title");
     assert.strictEqual(result.description, "Updated description");
+    assert.strictEqual(result.assignee, "alice");
     assert.strictEqual(result.status, "review");
     assert.strictEqual(result.priority, "high");
     assert.notStrictEqual(result.updatedAt, task.updatedAt);
@@ -187,6 +222,26 @@ suite("CodeTasks Store", () => {
     assert.strictEqual(archivedTask.id, "task-1");
     assert.ok(archivedTask.archivedAt);
     assert.strictEqual(memento.get<CodeTask[]>(TASKS_KEY)?.length, 1);
+  });
+
+  test("applyAssignees overlays shared assignees onto existing tasks", async () => {
+    const memento = new InMemoryMemento();
+    const store = new TaskStore(memento);
+
+    await store.setTasks([
+      createTask({
+        id: "task-1",
+        title: "Shared task",
+      }),
+    ]);
+
+    await store.applyAssignees({
+      "task-1": "alice",
+    });
+
+    const [task] = store.getTasks();
+
+    assert.strictEqual(task.assignee, "alice");
   });
 
   test("syncTasksForFile replaces only the changed file tasks", async () => {
