@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
-import { TaskStore } from "../store/taskStore";
 import { CodeTask } from "../models/task";
+import { TaskStore } from "../store/taskStore";
+import { buildTaskTypeCssVariables } from "../theme/taskTypeColors";
 
 export class TaskWorkspaceProvider {
   constructor(
@@ -229,6 +230,7 @@ export class TaskWorkspaceProvider {
   private getHtml(currentView: "table" | "kanban" = "table"): string {
     const tasks = this.taskStore.getActiveTasks();
     const stats = this.taskStore.getTaskStats();
+    const taskTypeCssVars = buildTaskTypeCssVariables();
     const statusCounts = {
       open: tasks.filter((task) => task.status === "open").length,
 
@@ -273,7 +275,11 @@ export class TaskWorkspaceProvider {
 								</td>
 
 								<td>
-									${task.type}
+									<span
+										class="task-type-badge type-${task.type.toLowerCase()}"
+									>
+										${this.escapeHtml(task.type)}
+									</span>
 								</td>
 
 								<td>
@@ -378,6 +384,10 @@ export class TaskWorkspaceProvider {
 				<title>CodeTasks</title>
 
 				<style>
+					:root {
+						${taskTypeCssVars}
+					}
+
 					body {
 						font-family: var(
 							--vscode-font-family
@@ -778,38 +788,68 @@ export class TaskWorkspaceProvider {
 				}
 				
 				.type-todo {
-					color:
-						var(--vscode-charts-blue);
+					color: var(--codetasks-task-type-todo);
+					background:
+						color-mix(
+							in srgb,
+							var(--codetasks-task-type-todo) 12%,
+							transparent
+						);
 				}
 
 
 				.type-fixme {
-					color:
-						var(--vscode-charts-orange);
+					color: var(--codetasks-task-type-fixme);
+					background:
+						color-mix(
+							in srgb,
+							var(--codetasks-task-type-fixme) 12%,
+							transparent
+						);
 				}
 
 
 				.type-bug {
-					color:
-						var(--vscode-errorForeground);
+					color: var(--codetasks-task-type-bug);
+					background:
+						color-mix(
+							in srgb,
+							var(--codetasks-task-type-bug) 12%,
+							transparent
+						);
 				}
 
 
 				.type-hack {
-					color:
-						var(--vscode-charts-purple);
+					color: var(--codetasks-task-type-hack);
+					background:
+						color-mix(
+							in srgb,
+							var(--codetasks-task-type-hack) 12%,
+							transparent
+						);
 				}
 
 
 				.type-refactor {
-					color:
-						var(--vscode-charts-green);
+					color: var(--codetasks-task-type-refactor);
+					background:
+						color-mix(
+							in srgb,
+							var(--codetasks-task-type-refactor) 12%,
+							transparent
+						);
 				}
 
 
 				.type-task {
-					color:
-						var(--vscode-descriptionForeground);
+					color: var(--codetasks-task-type-task);
+					background:
+						color-mix(
+							in srgb,
+							var(--codetasks-task-type-task) 12%,
+							transparent
+						);
 				}
 				
 				.kanban-card-location {

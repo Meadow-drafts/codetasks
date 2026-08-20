@@ -48,6 +48,27 @@
           "type": "boolean",
           "default": false,
           "description": "Open the CodeTasks workspace automatically after activation if tasks are found."
+        },
+        "codetasks.typeColors": {
+          "type": "object",
+          "default": {
+            "TODO": "#4B9CFF",
+            "FIXME": "#FFB020",
+            "BUG": "#FF5C7A",
+            "HACK": "#B56BFF",
+            "REFACTOR": "#45C48C",
+            "TASK": "#8A94A6"
+          },
+          "additionalProperties": false,
+          "properties": {
+            "TODO": { "type": "string" },
+            "FIXME": { "type": "string" },
+            "BUG": { "type": "string" },
+            "HACK": { "type": "string" },
+            "REFACTOR": { "type": "string" },
+            "TASK": { "type": "string" }
+          },
+          "description": "Custom colors for task comment types used by CodeTasks UI and editor markers."
         }
       }
     },

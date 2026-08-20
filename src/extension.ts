@@ -104,10 +104,7 @@ export async function activate(context: vscode.ExtensionContext) {
     taskStore,
   );
   const taskCodeLensProvider = new TaskCodeLensProvider(taskStore);
-  const taskDecorationManager = new TaskDecorationManager(
-    context.extensionUri,
-    taskStore,
-  );
+  const taskDecorationManager = new TaskDecorationManager(taskStore);
 
   vscode.window.registerTreeDataProvider(
     "codetasks.taskView",
@@ -136,6 +133,10 @@ export async function activate(context: vscode.ExtensionContext) {
       }
 
       if (event.affectsConfiguration("codetasks.decorationsEnabled")) {
+        taskDecorationManager.refresh();
+      }
+
+      if (event.affectsConfiguration("codetasks.typeColors")) {
         taskDecorationManager.refresh();
       }
 

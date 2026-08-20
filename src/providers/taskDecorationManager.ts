@@ -2,11 +2,13 @@ import * as vscode from "vscode";
 import { CodeTask } from "../models/task";
 import { TASK_PATTERN } from "../scanner/taskScanner";
 import { TaskStore } from "../store/taskStore";
+import {
+  createTaskTypeIconDataUri,
+  getTaskTypeColors,
+  TASK_TYPES,
+} from "../theme/taskTypeColors";
 
-type DecorationBuckets = {
-  active: vscode.DecorationOptions[];
-  archived: vscode.DecorationOptions[];
-};
+type DecorationBuckets = Record<CodeTask["type"], vscode.DecorationOptions[]>;
 
 function buildTaskKey(
   filePath: string,
@@ -17,13 +19,24 @@ function buildTaskKey(
   return [filePath, line, type, title.trim()].join("|");
 }
 
-function findTaskLines(document: vscode.TextDocument): Array<{
+function createEmptyBuckets(): DecorationBuckets {
+  return {
+    TODO: [],
+    FIXME: [],
+    BUG: [],
+    HACK: [],
+    REFACTOR: [],
+    TASK: [],
+  };
+}
+
+function findTaskMarkers(document: vscode.TextDocument): Array<{
   line: number;
   type: CodeTask["type"];
   title: string;
 }> {
   const lines = document.getText().split(/\r?\n/);
-  const matches: Array<{
+  const markers: Array<{
     line: number;
     type: CodeTask["type"];
     title: string;
@@ -39,48 +52,31 @@ function findTaskLines(document: vscode.TextDocument): Array<{
     const [, rawType, title] = match;
     const type = rawType.toUpperCase() as CodeTask["type"];
 
-    matches.push({
+    markers.push({
       line: index,
       type,
       title: title.trim(),
     });
   });
 
-  return matches;
+  return markers;
 }
 
 export class TaskDecorationManager implements vscode.Disposable {
   private readonly disposables: vscode.Disposable[] = [];
 
-  private readonly activeDecorationType: vscode.TextEditorDecorationType;
+  private activeDecorationTypes = new Map<
+    CodeTask["type"],
+    vscode.TextEditorDecorationType
+  >();
 
-  private readonly archivedDecorationType: vscode.TextEditorDecorationType;
+  private archivedDecorationTypes = new Map<
+    CodeTask["type"],
+    vscode.TextEditorDecorationType
+  >();
 
-  constructor(
-    private readonly extensionUri: vscode.Uri,
-    private readonly taskStore: TaskStore,
-  ) {
-    this.activeDecorationType = vscode.window.createTextEditorDecorationType({
-      gutterIconPath: vscode.Uri.joinPath(
-        this.extensionUri,
-        "resources",
-        "task-active.svg",
-      ),
-      gutterIconSize: "contain",
-      overviewRulerColor: new vscode.ThemeColor("charts.blue"),
-      overviewRulerLane: vscode.OverviewRulerLane.Left,
-    });
-
-    this.archivedDecorationType = vscode.window.createTextEditorDecorationType({
-      gutterIconPath: vscode.Uri.joinPath(
-        this.extensionUri,
-        "resources",
-        "task-archived.svg",
-      ),
-      gutterIconSize: "contain",
-      overviewRulerColor: new vscode.ThemeColor("disabledForeground"),
-      overviewRulerLane: vscode.OverviewRulerLane.Left,
-    });
+  constructor(private readonly taskStore: TaskStore) {
+    this.rebuildDecorationTypes();
 
     this.disposables.push(
       this.taskStore.onDidChange(() => {
@@ -104,21 +100,69 @@ export class TaskDecorationManager implements vscode.Disposable {
   }
 
   refresh(): void {
+    this.rebuildDecorationTypes();
     this.updateVisibleEditors();
   }
 
   dispose(): void {
-    this.activeDecorationType.dispose();
-    this.archivedDecorationType.dispose();
+    for (const decoration of this.activeDecorationTypes.values()) {
+      decoration.dispose();
+    }
+
+    for (const decoration of this.archivedDecorationTypes.values()) {
+      decoration.dispose();
+    }
 
     for (const disposable of this.disposables) {
       disposable.dispose();
     }
   }
 
+  private rebuildDecorationTypes(): void {
+    for (const decoration of this.activeDecorationTypes.values()) {
+      decoration.dispose();
+    }
+
+    for (const decoration of this.archivedDecorationTypes.values()) {
+      decoration.dispose();
+    }
+
+    this.activeDecorationTypes = new Map();
+    this.archivedDecorationTypes = new Map();
+
+    const colors = getTaskTypeColors();
+
+    for (const type of TASK_TYPES) {
+      const color = colors[type];
+
+      this.activeDecorationTypes.set(
+        type,
+        vscode.window.createTextEditorDecorationType({
+          gutterIconPath: createTaskTypeIconDataUri(color),
+          gutterIconSize: "contain",
+          overviewRulerColor: color,
+          overviewRulerLane: vscode.OverviewRulerLane.Left,
+        }),
+      );
+
+      this.archivedDecorationTypes.set(
+        type,
+        vscode.window.createTextEditorDecorationType({
+          gutterIconPath: createTaskTypeIconDataUri(color, 0.45),
+          gutterIconSize: "contain",
+          overviewRulerColor: color,
+          overviewRulerLane: vscode.OverviewRulerLane.Left,
+        }),
+      );
+    }
+  }
+
   private getDecorationsForDocument(
     document: vscode.TextDocument,
-  ): DecorationBuckets {
+  ): {
+    active: DecorationBuckets;
+    archived: DecorationBuckets;
+  } {
     const taskByKey = new Map(
       this.taskStore.getTasks().map((task) => [
         buildTaskKey(task.filePath, task.line, task.type, task.title),
@@ -126,21 +170,25 @@ export class TaskDecorationManager implements vscode.Disposable {
       ]),
     );
 
-    const active: vscode.DecorationOptions[] = [];
-    const archived: vscode.DecorationOptions[] = [];
+    const active = createEmptyBuckets();
+    const archived = createEmptyBuckets();
 
-    for (const marker of findTaskLines(document)) {
+    for (const marker of findTaskMarkers(document)) {
       const task = taskByKey.get(
-        buildTaskKey(document.uri.fsPath, marker.line, marker.type, marker.title),
+        buildTaskKey(
+          document.uri.fsPath,
+          marker.line,
+          marker.type,
+          marker.title,
+        ),
       );
 
       if (!task) {
         continue;
       }
 
-      const range = new vscode.Range(marker.line, 0, marker.line, 0);
       const decoration: vscode.DecorationOptions = {
-        range,
+        range: new vscode.Range(marker.line, 0, marker.line, 0),
         hoverMessage: new vscode.MarkdownString(
           [
             `**${task.type}**: ${task.title}`,
@@ -153,9 +201,9 @@ export class TaskDecorationManager implements vscode.Disposable {
       };
 
       if (task.archivedAt) {
-        archived.push(decoration);
+        archived[task.type].push(decoration);
       } else {
-        active.push(decoration);
+        active[task.type].push(decoration);
       }
     }
 
@@ -172,15 +220,28 @@ export class TaskDecorationManager implements vscode.Disposable {
 
     for (const editor of vscode.window.visibleTextEditors) {
       if (!decorationsEnabled) {
-        editor.setDecorations(this.activeDecorationType, []);
-        editor.setDecorations(this.archivedDecorationType, []);
+        for (const type of TASK_TYPES) {
+          editor.setDecorations(this.activeDecorationTypes.get(type)!, []);
+          editor.setDecorations(this.archivedDecorationTypes.get(type)!, []);
+        }
+
         continue;
       }
 
-      const { active, archived } = this.getDecorationsForDocument(editor.document);
+      const { active, archived } = this.getDecorationsForDocument(
+        editor.document,
+      );
 
-      editor.setDecorations(this.activeDecorationType, active);
-      editor.setDecorations(this.archivedDecorationType, archived);
+      for (const type of TASK_TYPES) {
+        editor.setDecorations(
+          this.activeDecorationTypes.get(type)!,
+          active[type],
+        );
+        editor.setDecorations(
+          this.archivedDecorationTypes.get(type)!,
+          archived[type],
+        );
+      }
     }
   }
 }

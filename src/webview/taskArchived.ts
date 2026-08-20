@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { CodeTask } from "../models/task";
 import { TaskStore } from "../store/taskStore";
+import { buildTaskTypeCssVariables } from "../theme/taskTypeColors";
 
 export class TaskArchivedProvider {
   constructor(
@@ -142,6 +143,7 @@ export class TaskArchivedProvider {
 
   private getHtml(): string {
     const tasks = this.taskStore.getArchivedTasks();
+    const taskTypeCssVars = buildTaskTypeCssVariables();
 
     return `
       <!DOCTYPE html>
@@ -150,8 +152,12 @@ export class TaskArchivedProvider {
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Archived Tasks</title>
-        <style>
-          body {
+      <style>
+        :root {
+          ${taskTypeCssVars}
+        }
+
+        body {
             font-family: var(--vscode-font-family);
             color: var(--vscode-foreground);
             background: var(--vscode-editor-background);
@@ -273,6 +279,30 @@ export class TaskArchivedProvider {
           .priority-critical {
             color: var(--vscode-errorForeground);
             background: color-mix(in srgb, var(--vscode-errorForeground) 12%, transparent);
+          }
+          .type-todo {
+            color: var(--codetasks-task-type-todo);
+            background: color-mix(in srgb, var(--codetasks-task-type-todo) 12%, transparent);
+          }
+          .type-fixme {
+            color: var(--codetasks-task-type-fixme);
+            background: color-mix(in srgb, var(--codetasks-task-type-fixme) 12%, transparent);
+          }
+          .type-bug {
+            color: var(--codetasks-task-type-bug);
+            background: color-mix(in srgb, var(--codetasks-task-type-bug) 12%, transparent);
+          }
+          .type-hack {
+            color: var(--codetasks-task-type-hack);
+            background: color-mix(in srgb, var(--codetasks-task-type-hack) 12%, transparent);
+          }
+          .type-refactor {
+            color: var(--codetasks-task-type-refactor);
+            background: color-mix(in srgb, var(--codetasks-task-type-refactor) 12%, transparent);
+          }
+          .type-task {
+            color: var(--codetasks-task-type-task);
+            background: color-mix(in srgb, var(--codetasks-task-type-task) 12%, transparent);
           }
           .actions {
             display: flex;
@@ -476,7 +506,7 @@ export class TaskArchivedProvider {
               "<td>",
               '<span class="badge status">' + escapeHtml(formatStatus(task.status)) + '</span>',
               '<span class="badge priority-' + escapeHtml(task.priority) + '">' + escapeHtml(formatPriority(task.priority)) + '</span>',
-              '<div class="file">Type: ' + escapeHtml(task.type) + '</div>',
+              '<div class="file">Type: <span class="badge type-badge type-' + escapeHtml(task.type.toLowerCase()) + '">' + escapeHtml(task.type) + '</span></div>',
               "</td>",
               '<td>' + escapeHtml(task.archivedAt ? new Date(task.archivedAt).toLocaleString() : "") + '</td>',
               "<td>",

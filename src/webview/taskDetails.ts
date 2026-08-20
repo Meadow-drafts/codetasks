@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { CodeTask, TaskPriority, TaskStatus } from "../models/task";
 import { TaskStore } from "../store/taskStore";
+import { buildTaskTypeCssVariables } from "../theme/taskTypeColors";
 
 export class TaskDetailsProvider {
   constructor(
@@ -267,6 +268,9 @@ export class TaskDetailsProvider {
   }
 
   private getHtml(task: CodeTask): string {
+    const taskTypeCssVars = buildTaskTypeCssVariables();
+    const taskTypeClass = `type-${task.type.toLowerCase()}`;
+
     return `
     <!DOCTYPE html>
 
@@ -284,6 +288,10 @@ export class TaskDetailsProvider {
       <title>Task Details</title>
 
       <style>
+
+        :root {
+          ${taskTypeCssVars}
+        }
 
         body {
           font-family:
@@ -328,12 +336,45 @@ export class TaskDetailsProvider {
         }
 
         .type {
-          color:
-            var(--vscode-descriptionForeground);
-
-          font-size: 13px;
-
+          display: inline-flex;
+          align-items: center;
+          padding: 3px 9px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
           margin-bottom: 28px;
+        }
+
+        .type-todo {
+          color: var(--codetasks-task-type-todo);
+          background: color-mix(in srgb, var(--codetasks-task-type-todo) 12%, transparent);
+        }
+
+        .type-fixme {
+          color: var(--codetasks-task-type-fixme);
+          background: color-mix(in srgb, var(--codetasks-task-type-fixme) 12%, transparent);
+        }
+
+        .type-bug {
+          color: var(--codetasks-task-type-bug);
+          background: color-mix(in srgb, var(--codetasks-task-type-bug) 12%, transparent);
+        }
+
+        .type-hack {
+          color: var(--codetasks-task-type-hack);
+          background: color-mix(in srgb, var(--codetasks-task-type-hack) 12%, transparent);
+        }
+
+        .type-refactor {
+          color: var(--codetasks-task-type-refactor);
+          background: color-mix(in srgb, var(--codetasks-task-type-refactor) 12%, transparent);
+        }
+
+        .type-task {
+          color: var(--codetasks-task-type-task);
+          background: color-mix(in srgb, var(--codetasks-task-type-task) 12%, transparent);
         }
 
         .section {
@@ -634,7 +675,7 @@ export class TaskDetailsProvider {
         </div>
 
 
-        <div class="type">
+        <div class="type ${taskTypeClass}">
           ${this.escapeHtml(task.type)}
         </div>
 
