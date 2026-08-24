@@ -3,8 +3,13 @@
   "displayName": "CodeTasks — TODO & Kanban",
   "publisher": "SengkaShirley",
   "description": "Track and manage TODOs, FIXMEs, bugs and other code tasks with table and Kanban views.",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "license": "SEE LICENSE IN LICENSE",
+  "icon": "resources/icon.png",
+    "galleryBanner": {
+    "color": "#18181B",
+    "theme": "dark"
+  },
   "repository": {
     "type": "git",
     "url": "https://github.com/Meadow-drafts/codetasks.git"

@@ -72,6 +72,6 @@ CodeTasks includes commands for opening the workspace, opening archived tasks, r
 
 ## Release Notes
 
-### 0.0.1
+### 0.0.3
 
 Initial release of CodeTasks.
