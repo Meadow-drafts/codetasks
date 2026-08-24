@@ -259,133 +259,7 @@ export class TaskWorkspaceProvider {
 
       critical: tasks.filter((task) => task.priority === "critical").length,
     };
-    const rows = tasks
-      .map(
-        (task) => `
-			<tr
-					class="task-row"
-					data-task-id="${this.escapeHtml(task.id)}"
-					data-title="${this.escapeHtml(task.title.toLowerCase())}"
-					data-status="${task.status}"
-					data-type="${task.type}"
-					data-priority="${task.priority}"
-					data-assignee="${this.escapeHtml(task.assignee || "")}"
-					data-created-at="${this.escapeHtml(task.createdAt)}"
-					data-updated-at="${this.escapeHtml(task.updatedAt)}"
-					data-file-name="${this.escapeHtml(
-            vscode.Uri.file(task.filePath).fsPath.split("/").pop() || "",
-          )}"
-					data-line="${task.line + 1}"
-				>
-								<td>
-										${this.escapeHtml(task.title)}
-								</td>
-
-								<td>
-									<span class="table-assignee ${
-                    task.assignee ? "" : "empty"
-                  }">
-										${
-                      task.assignee
-                        ? this.escapeHtml(task.assignee)
-                        : "-"
-                    }
-									</span>
-								</td>
-
-								<td>
-									<span
-										class="task-type-badge type-${task.type.toLowerCase()}"
-									>
-										${this.escapeHtml(task.type)}
-									</span>
-								</td>
-
-								<td>
-									<select
-								class="status-select"
-								data-task-id="${this.escapeHtml(task.id)}"
-								data-current-status="${task.status}"
-							>
-									<option
-										value="open"
-										${task.status === "open" ? "selected" : ""}
-									>
-										Open
-									</option>
-
-									<option
-										value="in-progress"
-										${task.status === "in-progress" ? "selected" : ""}
-									>
-										In Progress
-									</option>
-
-									<option
-										value="blocked"
-										${task.status === "blocked" ? "selected" : ""}
-									>
-										Blocked
-									</option>
-
-									<option
-										value="review"
-										${task.status === "review" ? "selected" : ""}
-									>
-										Review
-									</option>
-
-									<option
-										value="done"
-										${task.status === "done" ? "selected" : ""}
-									>
-										Done
-									</option>
-								</select>
-				</td>
-				<td>
-					<select
-						class="priority-select"
-						data-task-id="${this.escapeHtml(task.id)}"
-						data-current-priority="${task.priority}"
-					>
-						<option
-							value="low"
-							${task.priority === "low" ? "selected" : ""}
-						>
-							Low
-						</option>
-
-						<option
-							value="medium"
-							${task.priority === "medium" ? "selected" : ""}
-						>
-							Medium
-						</option>
-
-						<option
-							value="high"
-							${task.priority === "high" ? "selected" : ""}
-						>
-							High
-						</option>
-
-						<option
-							value="critical"
-							${task.priority === "critical" ? "selected" : ""}
-						>
-							Critical
-						</option>
-					</select>
-								</td>
-
-								<td>
-									${this.escapeHtml(task.filePath)}:${task.line + 1}
-								</td>
-							</tr>
-		`,
-      )
-      .join("");
+    const tasksJson = JSON.stringify(tasks).replace(/</g, "\\u003c");
 
     return `
 			<!DOCTYPE html>
@@ -445,6 +319,45 @@ export class TaskWorkspaceProvider {
 						display: flex;
 						gap: 8px;
 						margin-bottom: 16px;
+					}
+					.pagination-bar {
+						display: flex;
+						justify-content: space-between;
+						align-items: center;
+						gap: 12px;
+						flex-wrap: wrap;
+						margin-top: 14px;
+						padding-top: 12px;
+						border-top: 1px solid
+							var(--vscode-panel-border);
+					}
+					.pagination-controls {
+						display: flex;
+						align-items: center;
+						gap: 8px;
+						flex-wrap: wrap;
+					}
+					.page-size-control {
+						display: inline-flex;
+						align-items: center;
+						gap: 8px;
+						color: var(
+							--vscode-descriptionForeground
+						);
+					}
+					.pagination-summary,
+					.page-info {
+						color: var(
+							--vscode-descriptionForeground
+						);
+						font-size: 12px;
+					}
+					.empty-row td {
+						color: var(
+							--vscode-descriptionForeground
+						);
+						text-align: center;
+						padding: 18px 12px;
 					}
 					.status-select {
 						background: var(--vscode-dropdown-background);
@@ -610,6 +523,7 @@ export class TaskWorkspaceProvider {
 					.kanban-view {
 						width: 100%;
 						overflow-x: auto;
+						overflow-y: hidden;
 					}
 
 
@@ -621,6 +535,12 @@ export class TaskWorkspaceProvider {
 						gap: 12px;
 
 						min-width: 1100px;
+						align-items: stretch;
+						height: min(
+							70vh,
+							calc(100vh - 360px)
+						);
+						min-height: 420px;
 					}
 
 
@@ -635,6 +555,9 @@ export class TaskWorkspaceProvider {
 						border-radius: 6px;
 
 						min-height: 400px;
+						display: flex;
+						flex-direction: column;
+						overflow: hidden;
 					}
 
 
@@ -672,6 +595,9 @@ export class TaskWorkspaceProvider {
 						gap: 8px;
 
 						padding: 8px;
+						flex: 1;
+						overflow-y: auto;
+						min-height: 0;
 					}
 
 	  				.kanban-card {
@@ -1297,11 +1223,50 @@ export class TaskWorkspaceProvider {
 								<th>Location</th>
 							</tr>
 						</thead>
-						<tbody>
-							${rows}
-						</tbody>
+						<tbody></tbody>
 
 					</table>
+					<div class="pagination-bar">
+						<div
+							class="pagination-summary"
+							id="pagination-summary"
+						>
+							Showing 0 tasks
+						</div>
+
+						<div class="pagination-controls">
+							<label class="page-size-control">
+								Rows per page
+								<select id="page-size">
+									<option value="10">10</option>
+									<option value="25" selected>25</option>
+									<option value="50">50</option>
+									<option value="100">100</option>
+								</select>
+							</label>
+
+							<button
+								type="button"
+								id="prev-page"
+							>
+								← Prev
+							</button>
+
+							<span
+								class="page-info"
+								id="page-info"
+							>
+								Page 1 of 1
+							</span>
+
+							<button
+								type="button"
+								id="next-page"
+							>
+								Next →
+							</button>
+						</div>
+					</div>
 				</div>
 				<div
 					id="kanban-view"
@@ -1367,6 +1332,7 @@ export class TaskWorkspaceProvider {
 				</div>	
 			<script>
 				const vscode = acquireVsCodeApi();
+				const initialTasks = ${tasksJson};
 
 
 				/*
@@ -1598,15 +1564,11 @@ export class TaskWorkspaceProvider {
 				}
 
 				function renderTaskRows(tasks) {
-					if (!tableBody) {
-						return;
-					}
+					allTasks = Array.isArray(tasks)
+						? [...tasks]
+						: [];
 
-					tableBody.innerHTML = tasks
-						.map((task) => buildTaskRowHtml(task))
-						.join("");
-
-					bindTaskInteractions();
+					renderTable();
 				}
 
 				function bindTaskRowEvents() {
@@ -1718,15 +1680,13 @@ export class TaskWorkspaceProvider {
 
 				
 
-				function renderKanban() {
-
+				function renderKanban(tasks = currentFilteredTasks) {
 					const columns =
 						document.querySelectorAll(
 							".kanban-column"
 						);
 
 					columns.forEach((column) => {
-
 						const status =
 							column.dataset.status;
 
@@ -1744,60 +1704,28 @@ export class TaskWorkspaceProvider {
 							return;
 						}
 
-						cardsContainer.innerHTML = "";
-
-						const rows =
-							Array.from(
-								document.querySelectorAll(
-									".task-row"
-								)
-							);
-
-						const matchingRows =
-							rows.filter((row) => {
-
-								return (
-									row.dataset.status ===
-									status &&
-									row.style.display !== "none"
-								);
-
-							});
+						const matchingTasks = tasks.filter(
+							(task) =>
+								task.status === status
+						);
 
 						count.textContent =
 							String(
-								matchingRows.length
+								matchingTasks.length
 							);
 
+						cardsContainer.innerHTML = "";
 
-						if (matchingRows.length === 0) {
-
+						if (matchingTasks.length === 0) {
 							cardsContainer.innerHTML =
 								'<div class="kanban-empty">' +
-									'No tasks' +
-								'</div>';
+									"No tasks" +
+								"</div>";
 
 							return;
 						}
 
-
-						matchingRows.forEach((row) => {
-
-							const taskId =
-								row.dataset.taskId || "";
-
-							const title =
-								row.dataset.title || "";
-
-							const type =
-								row.dataset.type || "";
-
-							const priority =
-								row.dataset.priority || "";
-							const assignee =
-								row.dataset.assignee || "";
-
-
+						matchingTasks.forEach((task) => {
 							const card =
 								document.createElement(
 									"div"
@@ -1807,31 +1735,19 @@ export class TaskWorkspaceProvider {
 								"kanban-card";
 
 							card.draggable = true;
-
 							card.dataset.taskId =
-								taskId;
+								task.id;
 
-
-							/*
-							* Prevent a drag operation from
-							* accidentally triggering the
-							* card click afterwards.
-							*/
 							let wasDragging = false;
 
-
-							/*
-							* DRAG START
-							*/
 							card.addEventListener(
 								"dragstart",
 								(event) => {
-
 									wasDragging = true;
 
 									event.dataTransfer.setData(
 										"text/plain",
-										taskId
+										task.id
 									);
 
 									card.classList.add(
@@ -1840,102 +1756,82 @@ export class TaskWorkspaceProvider {
 								}
 							);
 
-
-							/*
-							* DRAG END
-							*/
 							card.addEventListener(
 								"dragend",
 								() => {
-
 									card.classList.remove(
 										"dragging"
 									);
 
 									setTimeout(() => {
-
 										wasDragging =
 											false;
-
 									}, 0);
 								}
 							);
 
-
-							/*
-							* CARD CONTENT
-							*/
-							const fileName =
-								row.dataset.fileName || "";
-
-							const line =
-								row.dataset.line || "";
-
-
 							card.innerHTML =
 								'<div class="kanban-card-title">' +
-									escapeHtml(title) +
-								'</div>' +
-
+									escapeHtml(
+										task.title
+									) +
+								"</div>" +
 								'<div class="kanban-card-meta">' +
-
 									'<span class="task-type-badge type-' +
-										type.toLowerCase() +
+										escapeHtml(
+											task.type.toLowerCase()
+										) +
 									'">' +
-										type +
-									'</span>' +
-
+										escapeHtml(
+											task.type
+										) +
+									"</span>" +
 									'<span class="priority-badge priority-' +
-										priority.toLowerCase() +
+										escapeHtml(
+											task.priority.toLowerCase()
+										) +
 									'">' +
-										priority +
-									'</span>' +
-
-								'</div>' +
-
-								(assignee
+										escapeHtml(
+											task.priority
+										) +
+									"</span>" +
+								"</div>" +
+								(task.assignee
 									? '<div class="kanban-card-assignee">Assignee: ' +
-										escapeHtml(assignee) +
-									'</div>'
-									: '') +
-
+										escapeHtml(
+											task.assignee
+										) +
+									"</div>"
+									: "") +
 								'<div class="kanban-card-location">' +
-
 									'<span class="codicon codicon-file-code"></span>' +
-
-									'<span>' +
-										fileName +
-									'</span>' +
-
+									"<span>" +
+										escapeHtml(
+											getFileName(
+												task.filePath
+											)
+										) +
+									"</span>" +
 									'<span class="kanban-card-line">' +
-										'Line ' +
-										line +
-									'</span>' +
+										"Line " +
+										(task.line + 1) +
+									"</span>" +
+								"</div>";
 
-								'</div>';
-
-
-							/*
-							* CLICK CARD
-							*
-							* Only open the source file
-							* if the card wasn't dragged.
-							*/
 							card.addEventListener(
 								"click",
 								() => {
-
 									if (wasDragging) {
 										return;
 									}
 
 									vscode.postMessage({
-										command: "openTaskDetails",
-										taskId: taskId,
+										command:
+											"openTaskDetails",
+										taskId: task.id,
 									});
 								}
 							);
-
 
 							cardsContainer.appendChild(
 								card
@@ -2066,6 +1962,50 @@ export class TaskWorkspaceProvider {
 						"kanban-view-button"
 					);
 
+				const paginationSummary =
+					document.getElementById(
+						"pagination-summary"
+					);
+
+				const pageInfo =
+					document.getElementById(
+						"page-info"
+					);
+
+				const pageSizeSelect =
+					document.getElementById(
+						"page-size"
+					);
+
+				const prevPageButton =
+					document.getElementById(
+						"prev-page"
+					);
+
+				const nextPageButton =
+					document.getElementById(
+						"next-page"
+					);
+
+				const tablePageSize =
+					Number(
+						pageSizeSelect?.value ?? 25
+					) || 25;
+
+				let activeView =
+					tableView.style.display !==
+					"none"
+						? "table"
+						: "kanban";
+
+				let allTasks = [];
+
+				let currentFilteredTasks = [];
+
+				let currentPage = 1;
+
+				let pageSize = tablePageSize;
+
 
 				/*
 				* ============================================================
@@ -2091,6 +2031,10 @@ export class TaskWorkspaceProvider {
 						kanbanViewButton.classList.remove(
 							"active"
 						);
+
+						activeView = "table";
+
+						renderTable();
 
 
 						vscode.postMessage({
@@ -2123,6 +2067,7 @@ export class TaskWorkspaceProvider {
 							"active"
 						);
 
+						activeView = "kanban";
 
 						renderKanban();
 
@@ -2255,8 +2200,46 @@ export class TaskWorkspaceProvider {
 					}
 				);
 
-				bindTaskInteractions();
-				filterTasks();
+				if (pageSizeSelect) {
+					pageSizeSelect.addEventListener(
+						"change",
+						() => {
+							pageSize =
+								Number(
+									pageSizeSelect.value
+								) || 25;
+							currentPage = 1;
+							renderTable();
+						}
+					);
+				}
+
+				if (prevPageButton) {
+					prevPageButton.addEventListener(
+						"click",
+						() => {
+							if (currentPage <= 1) {
+								return;
+							}
+
+							currentPage -= 1;
+							renderTable();
+						}
+					);
+				}
+
+				if (nextPageButton) {
+					nextPageButton.addEventListener(
+						"click",
+						() => {
+							currentPage += 1;
+							renderTable();
+						}
+					);
+				}
+
+				renderTaskRows(initialTasks);
+				updateHeaderSummary(initialTasks);
 
 
 				/*
@@ -2265,123 +2248,268 @@ export class TaskWorkspaceProvider {
 				* ============================================================
 				*/
 
-				function filterTasks() {
+				function getFilterState() {
+					return {
+						search:
+							searchInput.value
+								.trim()
+								.toLowerCase(),
+						selectedStatus:
+							statusFilter.value,
+						selectedType:
+							typeFilter.value,
+						selectedPriority:
+							priorityFilter.value,
+						selectedSort:
+							sortFilter.value,
+					};
+				}
 
-					const search =
-						searchInput.value
-							.trim()
-							.toLowerCase();
+				function sortTasks(tasks, sortType) {
+					const priorityOrder = {
+						low: 1,
+						medium: 2,
+						high: 3,
+						critical: 4,
+					};
 
+					return [...tasks].sort((a, b) => {
+						switch (sortType) {
+							case "updated-desc":
+								return compareDates(
+									b.updatedAt,
+									a.updatedAt
+								);
+							case "updated-asc":
+								return compareDates(
+									a.updatedAt,
+									b.updatedAt
+								);
+							case "created-desc":
+								return compareDates(
+									b.createdAt,
+									a.createdAt
+								);
+							case "created-asc":
+								return compareDates(
+									a.createdAt,
+									b.createdAt
+								);
+							case "priority-desc":
+								return (
+									priorityOrder[
+										b.priority
+									] -
+									priorityOrder[
+										a.priority
+									]
+								);
+							case "priority-asc":
+								return (
+									priorityOrder[
+										a.priority
+									] -
+									priorityOrder[
+										b.priority
+									]
+								);
+							case "title-asc":
+								return (
+									a.title || ""
+								).localeCompare(
+									b.title || ""
+								);
+							case "title-desc":
+								return (
+									b.title || ""
+								).localeCompare(
+									a.title || ""
+								);
+							default:
+								return 0;
+						}
+					});
+				}
 
-					const selectedStatus =
-						statusFilter.value;
+				function getFilteredTasks(tasks) {
+					const {
+						search,
+						selectedStatus,
+						selectedType,
+						selectedPriority,
+						selectedSort,
+					} = getFilterState();
 
+					const filteredTasks = tasks.filter(
+						(task) => {
+							const title =
+								(task.title || "")
+									.toLowerCase();
 
-					const selectedType =
-						typeFilter.value;
+							const matchesSearch =
+								!search ||
+								title.includes(
+									search
+								);
 
+							const matchesStatus =
+								selectedStatus ===
+									"all" ||
+								task.status ===
+									selectedStatus;
 
-					const selectedPriority =
-						priorityFilter.value;
+							const matchesType =
+								selectedType ===
+									"all" ||
+								task.type ===
+									selectedType;
 
+							const matchesPriority =
+								selectedPriority ===
+									"all" ||
+								task.priority ===
+									selectedPriority;
 
-					const selectedSort =
-						sortFilter.value;
+							return (
+								matchesSearch &&
+								matchesStatus &&
+								matchesType &&
+								matchesPriority
+							);
+						}
+					);
 
+					return sortTasks(
+						filteredTasks,
+						selectedSort
+					);
+				}
 
-					const rowsArray =
-						Array.from(
-							document.querySelectorAll(
-								".task-row"
+				function updatePaginationControls(
+					totalItems,
+					totalPages
+				) {
+					if (paginationSummary) {
+						const start =
+							totalItems === 0
+								? 0
+								: (currentPage - 1) *
+										pageSize +
+									1;
+						const end =
+							totalItems === 0
+								? 0
+								: Math.min(
+										currentPage *
+											pageSize,
+										totalItems
+									);
+
+						paginationSummary.textContent =
+							totalItems === 0
+								? "No tasks match the current filters."
+								: "Showing " +
+									start +
+									"–" +
+									end +
+									" of " +
+									totalItems +
+									" task(s)";
+					}
+
+					if (pageInfo) {
+						pageInfo.textContent =
+							"Page " +
+							currentPage +
+							" of " +
+							totalPages;
+					}
+
+					if (prevPageButton) {
+						prevPageButton.disabled =
+							currentPage <= 1;
+					}
+
+					if (nextPageButton) {
+						nextPageButton.disabled =
+							currentPage >= totalPages;
+					}
+				}
+
+				function renderTable() {
+					if (!tableBody) {
+						return;
+					}
+
+					const visibleTasks =
+						getFilteredTasks(allTasks);
+
+					currentFilteredTasks =
+						visibleTasks;
+
+					const totalItems =
+						visibleTasks.length;
+
+					const totalPages =
+						Math.max(
+							1,
+							Math.ceil(
+								totalItems / pageSize
 							)
 						);
 
+					currentPage = Math.min(
+						Math.max(currentPage, 1),
+						totalPages
+					);
 
-					rowsArray.forEach((row) => {
+					const start =
+						(currentPage - 1) * pageSize;
 
-						const title =
-							row.dataset.title || "";
+					const pageTasks =
+						visibleTasks.slice(
+							start,
+							start + pageSize
+						);
 
+					tableBody.innerHTML =
+						pageTasks.length === 0
+							? '<tr class="empty-row"><td colspan="6">No tasks match the current filters.</td></tr>'
+							: pageTasks
+									.map((task) =>
+										buildTaskRowHtml(
+											task
+										)
+									)
+									.join("");
 
-						const status =
-							row.dataset.status || "";
-
-
-						const type =
-							row.dataset.type || "";
-
-
-						const priority =
-							row.dataset.priority || "";
-
-
-						const matchesSearch =
-							!search ||
-							title.includes(
-								search
-							);
-
-
-						const matchesStatus =
-							selectedStatus === "all" ||
-							status ===
-								selectedStatus;
-
-
-						const matchesType =
-							selectedType === "all" ||
-							type ===
-								selectedType;
-
-
-						const matchesPriority =
-							selectedPriority === "all" ||
-							priority ===
-								selectedPriority;
-
-
-						const visible =
-							matchesSearch &&
-							matchesStatus &&
-							matchesType &&
-							matchesPriority;
-
-
-						row.style.display =
-							visible
-								? ""
-								: "none";
-					});
-
-
-					sortRows(
-						rowsArray,
-						selectedSort
+					bindTaskInteractions();
+					updatePaginationControls(
+						totalItems,
+						totalPages
 					);
 
 					statCards.forEach((card) => {
-
 						const cardStatus =
 							card.dataset.statusFilter;
 
 						card.classList.toggle(
-							'active',
-							cardStatus === selectedStatus
+							"active",
+							cardStatus ===
+								statusFilter.value
 						);
-
 					});
 
-
-					/*
-					* Keep Kanban synchronized
-					* with filters.
-					*/
-					if (
-						kanbanView.style.display !==
-						"none"
-					) {
-						renderKanban();
+					if (activeView === "kanban") {
+						renderKanban(
+							visibleTasks
+						);
 					}
+				}
+
+				function filterTasks() {
+					currentPage = 1;
+					renderTable();
 				}
 
 
@@ -2390,118 +2518,6 @@ export class TaskWorkspaceProvider {
 				* SORTING
 				* ============================================================
 				*/
-
-				function sortRows(
-					rows,
-					sortType
-				) {
-
-					if (!tableBody) {
-						return;
-					}
-
-
-					const priorityOrder = {
-						low: 1,
-						medium: 2,
-						high: 3,
-						critical: 4,
-					};
-
-
-					rows.sort((a, b) => {
-
-						switch (sortType) {
-
-							case "updated-desc":
-
-								return compareDates(
-									b.dataset.updatedAt,
-									a.dataset.updatedAt
-								);
-
-
-							case "updated-asc":
-
-								return compareDates(
-									a.dataset.updatedAt,
-									b.dataset.updatedAt
-								);
-
-
-							case "created-desc":
-
-								return compareDates(
-									b.dataset.createdAt,
-									a.dataset.createdAt
-								);
-
-
-							case "created-asc":
-
-								return compareDates(
-									a.dataset.createdAt,
-									b.dataset.createdAt
-								);
-
-
-							case "priority-desc":
-
-								return (
-									priorityOrder[
-										b.dataset.priority
-									] -
-									priorityOrder[
-										a.dataset.priority
-									]
-								);
-
-
-							case "priority-asc":
-
-								return (
-									priorityOrder[
-										a.dataset.priority
-									] -
-									priorityOrder[
-										b.dataset.priority
-									]
-								);
-
-
-							case "title-asc":
-
-								return (
-									a.dataset.title || ""
-								).localeCompare(
-									b.dataset.title || ""
-								);
-
-
-							case "title-desc":
-
-								return (
-									b.dataset.title || ""
-								).localeCompare(
-									a.dataset.title || ""
-								);
-
-
-							default:
-
-								return 0;
-						}
-					});
-
-
-					rows.forEach((row) => {
-
-						tableBody.appendChild(
-							row
-						);
-					});
-				}
-
 
 				function compareDates(
 					a,
@@ -2584,8 +2600,6 @@ export class TaskWorkspaceProvider {
 								message.tasks || []
 							);
 
-							filterTasks();
-
 							return;
 						}
 
@@ -2664,24 +2678,19 @@ export class TaskWorkspaceProvider {
 							select.disabled =
 								false;
 
+							allTasks = allTasks.map(
+								(task) =>
+									task.id ===
+									message.taskId
+										? {
+												...task,
+												status:
+													message.status,
+											}
+										: task
+							);
 
-							/*
-							* Re-run filters so a task
-							* immediately moves in/out
-							* of the selected status.
-							*/
-							filterTasks();
-
-
-							/*
-							* Keep Kanban synchronized.
-							*/
-							if (
-								kanbanView.style.display !==
-								"none"
-							) {
-								renderKanban();
-							}
+							renderTable();
 
 
 							return;
@@ -2861,19 +2870,19 @@ export class TaskWorkspaceProvider {
 							select.disabled =
 								false;
 
+							allTasks = allTasks.map(
+								(task) =>
+									task.id ===
+									message.taskId
+										? {
+												...task,
+												priority:
+													message.priority,
+											}
+										: task
+							);
 
-							filterTasks();
-
-
-							/*
-							* Keep Kanban synchronized.
-							*/
-							if (
-								kanbanView.style.display !==
-								"none"
-							) {
-								renderKanban();
-							}
+							renderTable();
 
 
 							return;

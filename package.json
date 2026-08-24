@@ -1,8 +1,18 @@
 {
-  "name": "codetasks",
-  "displayName": "CodeTasks",
-  "description": "Turn code TODOs into structured, trackable tasks.",
-  "version": "0.0.1",
+  "name": "codetasks-kanban",
+  "displayName": "CodeTasks — TODO & Kanban",
+  "publisher": "SengkaShirley",
+  "description": "Track and manage TODOs, FIXMEs, bugs and other code tasks with table and Kanban views.",
+  "version": "0.0.2",
+  "license": "SEE LICENSE IN LICENSE",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Meadow-drafts/codetasks.git"
+  },
+  "homepage": "https://github.com/Meadow-drafts/codetasks",
+  "bugs": {
+    "url": "https://github.com/Meadow-drafts/codetasks/issues"
+  },
   "engines": {
     "vscode": "^1.125.0"
   },
@@ -76,12 +86,24 @@
           },
           "additionalProperties": false,
           "properties": {
-            "TODO": { "type": "string" },
-            "FIXME": { "type": "string" },
-            "BUG": { "type": "string" },
-            "HACK": { "type": "string" },
-            "REFACTOR": { "type": "string" },
-            "TASK": { "type": "string" }
+            "TODO": {
+              "type": "string"
+            },
+            "FIXME": {
+              "type": "string"
+            },
+            "BUG": {
+              "type": "string"
+            },
+            "HACK": {
+              "type": "string"
+            },
+            "REFACTOR": {
+              "type": "string"
+            },
+            "TASK": {
+              "type": "string"
+            }
           },
           "description": "Custom colors for task comment types used by CodeTasks UI and editor markers."
         }
@@ -175,7 +197,6 @@
           "when": "view == codetasks.taskView",
           "group": "navigation"
         },
-
         {
           "command": "codetasks.openSettings",
           "when": "view == codetasks.taskView",

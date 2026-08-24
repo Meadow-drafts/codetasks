@@ -12,3 +12,7 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+handover_1.txt
+handover_2.txt
+handover_3.txt
+package-lock.json

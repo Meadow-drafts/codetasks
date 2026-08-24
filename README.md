@@ -1,71 +1,77 @@
-# codetasks README
+# CodeTasks
 
-This is the README for your extension "codetasks". After writing up a brief description, we recommend including the following sections.
+Turn TODO-style comments into a clean, lightweight task workspace inside VS Code.
 
-## Features
+> Keep code work visible, organized, and easy to revisit.
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+## Highlights
 
-For example if there is an image subfolder under your extension project workspace:
+- Scan `TODO`, `FIXME`, `BUG`, `HACK`, `REFACTOR`, and `TASK` comments.
+- View active work in a dedicated task workspace.
+- Switch between table and Kanban layouts.
+- Open rich task details for status, assignees, and source context.
+- Archive finished work and restore it later when needed.
+- Use optional shared assignees and GitHub contributor suggestions.
+- Customize task type colors to fit your team.
 
-\!\[feature X\]\(images/feature-x.png\)
+## What You Get
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+### Tasks View
+
+Your main workspace for active tasks.
+
+### Archived Tasks
+
+A separate home for completed or paused work.
+
+### Task Details
+
+A focused editor for updating task status, assignees, and notes.
+
+## Settings
+
+CodeTasks stays lightweight by default, with a few useful options:
+
+- `codetasks.autoRescanEnabled`
+- `codetasks.autoRescanDebounceMs`
+- `codetasks.codeLensEnabled`
+- `codetasks.decorationsEnabled`
+- `codetasks.scanExcludeGlobs`
+- `codetasks.autoOpenWorkspaceOnStartup`
+- `codetasks.sharedAssigneesEnabled`
+- `codetasks.sharedAssigneesFile`
+- `codetasks.githubAssigneesEnabled`
+- `codetasks.typeColors`
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+- VS Code `^1.125.0`
+- A workspace with supported task comments
 
-## Extension Settings
+## Quick Start
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+1. Open a project.
+2. Click the CodeTasks icon in the Activity Bar.
+3. Review active tasks in the workspace.
+4. Open a task to update it, archive it, or assign it.
 
-For example:
+## Commands
 
-This extension contributes the following settings:
+CodeTasks includes commands for opening the workspace, opening archived tasks, refreshing the list, opening task details, changing status, and restoring archived items.
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+## Notes
 
-## Known Issues
+- Shared assignees are optional.
+- GitHub contributor suggestions are optional.
+- The extension is designed to stay fast and low-overhead.
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+## Links
+
+- Repository: https://github.com/Meadow-drafts/codetasks
+- Issues: https://github.com/Meadow-drafts/codetasks/issues
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
+### 0.0.1
 
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+Initial release of CodeTasks.

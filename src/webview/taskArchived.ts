@@ -206,6 +206,36 @@ export class TaskArchivedProvider {
             margin-bottom: 16px;
             flex-wrap: wrap;
           }
+          .pagination-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid var(--vscode-panel-border);
+          }
+          .pagination-controls {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+          }
+          .page-size-control {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--vscode-descriptionForeground);
+          }
+          .page-info {
+            color: var(--vscode-descriptionForeground);
+            font-size: 12px;
+          }
+          .pagination-summary {
+            color: var(--vscode-descriptionForeground);
+            font-size: 13px;
+          }
           input,
           select {
             background: var(--vscode-input-background);
@@ -427,8 +457,27 @@ export class TaskArchivedProvider {
 
         <div id="content"></div>
 
-        <script>
+        <div class="pagination-bar">
+          <div class="pagination-summary" id="pagination-summary">No tasks</div>
+          <div class="pagination-controls">
+            <label class="page-size-control">
+              Rows per page
+              <select id="page-size">
+                <option value="10">10</option>
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </label>
+            <button id="prev-page" type="button">← Prev</button>
+            <span class="page-info" id="page-info">Page 1 of 1</span>
+            <button id="next-page" type="button">Next →</button>
+          </div>
+        </div>
+
+      <script>
           const vscode = acquireVsCodeApi();
+          const initialTasks = ${JSON.stringify(tasks).replace(/</g, "\\u003c")};
           const content = document.getElementById("content");
           const searchInput = document.getElementById("task-search");
           const statusFilter = document.getElementById("status-filter");
@@ -437,8 +486,15 @@ export class TaskArchivedProvider {
           const sortFilter = document.getElementById("sort-filter");
           const count = document.querySelector(".count");
           const refreshButton = document.getElementById("refresh-tasks");
+          const paginationSummary = document.getElementById("pagination-summary");
+          const pageInfo = document.getElementById("page-info");
+          const pageSizeSelect = document.getElementById("page-size");
+          const prevPageButton = document.getElementById("prev-page");
+          const nextPageButton = document.getElementById("next-page");
 
           let currentTasks = [];
+          let currentPage = 1;
+          let pageSize = Number(pageSizeSelect?.value ?? 25) || 25;
 
           function escapeHtml(value) {
             return String(value)
@@ -529,28 +585,9 @@ export class TaskArchivedProvider {
 
           function renderRows(tasks) {
             currentTasks = [...tasks];
+            currentPage = 1;
 
-            if (!content) {
-              return;
-            }
-
-            if (!tasks.length) {
-              content.innerHTML = '<div class="empty">No archived tasks right now.</div>';
-              updateCount(0);
-              return;
-            }
-
-            content.innerHTML = [
-              '<table>',
-              '<thead><tr><th>Task</th><th>Details</th><th>Archived</th><th>Actions</th></tr></thead>',
-              '<tbody>',
-              tasks.map((task) => buildTaskRowHtml(task)).join(''),
-              '</tbody>',
-              '</table>',
-            ].join('');
-
-            bindRows();
-            filterTasks();
+            renderTable();
 
             if (refreshButton) {
               refreshButton.disabled = false;
@@ -592,56 +629,124 @@ export class TaskArchivedProvider {
             });
           }
 
-          function filterTasks() {
-            const search = (searchInput && "value" in searchInput ? searchInput.value : "")
-              .trim()
-              .toLowerCase();
-            const selectedStatus = statusFilter && "value" in statusFilter ? statusFilter.value : "all";
-            const selectedType = typeFilter && "value" in typeFilter ? typeFilter.value : "all";
-            const selectedPriority = priorityFilter && "value" in priorityFilter ? priorityFilter.value : "all";
-            const selectedSort = sortFilter && "value" in sortFilter ? sortFilter.value : "archived-desc";
+          function getFilterState() {
+            return {
+              search: (searchInput && "value" in searchInput ? searchInput.value : "")
+                .trim()
+                .toLowerCase(),
+              selectedStatus:
+                statusFilter && "value" in statusFilter ? statusFilter.value : "all",
+              selectedType: typeFilter && "value" in typeFilter ? typeFilter.value : "all",
+              selectedPriority:
+                priorityFilter && "value" in priorityFilter ? priorityFilter.value : "all",
+              selectedSort: sortFilter && "value" in sortFilter ? sortFilter.value : "archived-desc",
+            };
+          }
 
-            const rows = Array.from(content?.querySelectorAll(".task-row") ?? []);
-
-            rows.forEach((row) => {
-              const title = row.dataset.title || "";
-              const status = row.dataset.status || "";
-              const type = row.dataset.type || "";
-              const priority = row.dataset.priority || "";
-              const visible =
-                (!search || title.includes(search)) &&
-                (selectedStatus === "all" || status === selectedStatus) &&
-                (selectedType === "all" || type === selectedType) &&
-                (selectedPriority === "all" || priority === selectedPriority);
-
-              row.classList.toggle("hidden", !visible);
-            });
-
-            rows.sort((a, b) => {
-              switch (selectedSort) {
+          function sortTasks(tasks, sortType) {
+            return [...tasks].sort((a, b) => {
+              switch (sortType) {
                 case "archived-desc":
-                  return compareDates(b.dataset.archivedAt || "", a.dataset.archivedAt || "");
+                  return compareDates(b.archivedAt || "", a.archivedAt || "");
                 case "archived-asc":
-                  return compareDates(a.dataset.archivedAt || "", b.dataset.archivedAt || "");
+                  return compareDates(a.archivedAt || "", b.archivedAt || "");
                 case "updated-desc":
-                  return compareDates(b.dataset.updatedAt || "", a.dataset.updatedAt || "");
+                  return compareDates(b.updatedAt || "", a.updatedAt || "");
                 case "updated-asc":
-                  return compareDates(a.dataset.updatedAt || "", b.dataset.updatedAt || "");
+                  return compareDates(a.updatedAt || "", b.updatedAt || "");
                 case "title-asc":
-                  return (a.dataset.title || "").localeCompare(b.dataset.title || "");
+                  return (a.title || "").localeCompare(b.title || "");
                 case "title-desc":
-                  return (b.dataset.title || "").localeCompare(a.dataset.title || "");
+                  return (b.title || "").localeCompare(a.title || "");
                 default:
                   return 0;
               }
             });
+          }
 
-            const tbody = content?.querySelector("tbody");
-            if (tbody) {
-              rows.forEach((row) => tbody.appendChild(row));
+          function getFilteredTasks(tasks) {
+            const {
+              search,
+              selectedStatus,
+              selectedType,
+              selectedPriority,
+              selectedSort,
+            } = getFilterState();
+
+            const filtered = tasks.filter((task) => {
+              const title = (task.title || "").toLowerCase();
+              return (
+                (!search || title.includes(search)) &&
+                (selectedStatus === "all" || task.status === selectedStatus) &&
+                (selectedType === "all" || task.type === selectedType) &&
+                (selectedPriority === "all" || task.priority === selectedPriority)
+              );
+            });
+
+            return sortTasks(filtered, selectedSort);
+          }
+
+          function updatePaginationControls(totalItems, totalPages) {
+            if (paginationSummary) {
+              const start = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+              const end = totalItems === 0 ? 0 : Math.min(currentPage * pageSize, totalItems);
+              paginationSummary.textContent =
+                totalItems === 0
+                  ? "No archived tasks match the current filters."
+                  : "Showing " + start + "–" + end + " of " + totalItems + " archived task(s)";
             }
 
-            updateCount(rows.filter((row) => !row.classList.contains("hidden")).length);
+            if (pageInfo) {
+              pageInfo.textContent = "Page " + currentPage + " of " + totalPages;
+            }
+
+            if (prevPageButton) {
+              prevPageButton.disabled = currentPage <= 1;
+            }
+
+            if (nextPageButton) {
+              nextPageButton.disabled = currentPage >= totalPages;
+            }
+          }
+
+          function renderTable() {
+            if (!content) {
+              return;
+            }
+
+            const visibleTasks = getFilteredTasks(currentTasks);
+            const totalItems = visibleTasks.length;
+            const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+            currentPage = Math.min(Math.max(currentPage, 1), totalPages);
+            const start = (currentPage - 1) * pageSize;
+            const pageTasks = visibleTasks.slice(start, start + pageSize);
+
+            if (!currentTasks.length) {
+              content.innerHTML = '<div class="empty">No archived tasks right now.</div>';
+              updateCount(0);
+              updatePaginationControls(0, 1);
+              return;
+            }
+
+            content.innerHTML = [
+              '<table>',
+              '<thead><tr><th>Task</th><th>Details</th><th>Archived</th><th>Actions</th></tr></thead>',
+              '<tbody>',
+              pageTasks.length
+                ? pageTasks.map((task) => buildTaskRowHtml(task)).join("")
+                : '<tr class="empty-row"><td colspan="4">No archived tasks match the current filters.</td></tr>',
+              '</tbody>',
+              '</table>',
+            ].join('');
+
+            bindRows();
+            updateCount(visibleTasks.length);
+            updatePaginationControls(totalItems, totalPages);
+          }
+
+          function filterTasks() {
+            currentPage = 1;
+            renderTable();
           }
 
           window.addEventListener('message', (event) => {
@@ -693,6 +798,30 @@ export class TaskArchivedProvider {
             sortFilter.addEventListener("change", filterTasks);
           }
 
+          if (pageSizeSelect) {
+            pageSizeSelect.addEventListener("change", () => {
+              pageSize = Number(pageSizeSelect.value) || 25;
+              currentPage = 1;
+              renderTable();
+            });
+          }
+
+          if (prevPageButton) {
+            prevPageButton.addEventListener("click", () => {
+              if (currentPage > 1) {
+                currentPage -= 1;
+                renderTable();
+              }
+            });
+          }
+
+          if (nextPageButton) {
+            nextPageButton.addEventListener("click", () => {
+              currentPage += 1;
+              renderTable();
+            });
+          }
+
           if (refreshButton) {
             refreshButton.addEventListener("click", () => {
               refreshButton.disabled = true;
@@ -701,7 +830,7 @@ export class TaskArchivedProvider {
             });
           }
 
-          renderRows(${JSON.stringify(tasks)});
+          renderRows(initialTasks);
         </script>
       </body>
       </html>
