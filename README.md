@@ -11,8 +11,18 @@ Turn TODO-style comments into a clean, lightweight task workspace inside VS Code
 - Switch between table and Kanban layouts.
 - Open rich task details for status, assignees, and source context.
 - Archive finished work and restore it later when needed.
-- Use optional shared assignees and GitHub contributor suggestions.
+- Let task assignees be managed through the project's GitHub contributors.
 - Customize task type colors to fit your team.
+
+## Preview
+
+### Table View
+
+![CodeTasks table view](resources/table.png)
+
+### Kanban View
+
+![CodeTasks kanban view](resources/kanban.png)
 
 ## What You Get
 
@@ -27,6 +37,7 @@ A separate home for completed or paused work.
 ### Task Details
 
 A focused editor for updating task status, assignees, and notes.
+Assignee suggestions can come from the project's GitHub contributors when enabled.
 
 ## Settings
 
@@ -72,6 +83,10 @@ CodeTasks includes commands for opening the workspace, opening archived tasks, r
 
 ## Release Notes
 
-### 0.0.3
+### 0.0.4
 
-Initial release of CodeTasks.
+## Recent Updates
+
+- Table pagination for active and archived task lists.
+- Scrollable Kanban columns for large boards.
+- Shorter location display in table views.

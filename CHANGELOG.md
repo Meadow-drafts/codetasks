@@ -6,6 +6,12 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+## [0.0.4]
+
+- Table pagination for active and archived task lists
+- Scrollable Kanban columns for large boards
+- Shorter location display in table views
+
 ## [0.0.2]
 
 - Leaner VSIX packaging

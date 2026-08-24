@@ -143,6 +143,10 @@ export class TaskArchivedProvider {
 
   private getHtml(): string {
     const tasks = this.taskStore.getArchivedTasks();
+    const tasksWithLocations = tasks.map((task) => ({
+      ...task,
+      location: vscode.workspace.asRelativePath(task.filePath, true),
+    }));
     const taskTypeCssVars = buildTaskTypeCssVariables();
 
     return `
@@ -477,7 +481,7 @@ export class TaskArchivedProvider {
 
       <script>
           const vscode = acquireVsCodeApi();
-          const initialTasks = ${JSON.stringify(tasks).replace(/</g, "\\u003c")};
+          const initialTasks = ${JSON.stringify(tasksWithLocations).replace(/</g, "\\u003c")};
           const content = document.getElementById("content");
           const searchInput = document.getElementById("task-search");
           const statusFilter = document.getElementById("status-filter");
@@ -507,6 +511,10 @@ export class TaskArchivedProvider {
 
           function compareDates(a, b) {
             return new Date(a).getTime() - new Date(b).getTime();
+          }
+
+          function getFileName(filePath) {
+            return filePath.split(/[\\/]/).pop() || "";
           }
 
           function formatStatus(status) {
@@ -565,7 +573,7 @@ export class TaskArchivedProvider {
               task.assignee
                 ? '<div class="task-assignee">Assignee: ' + escapeHtml(task.assignee) + '</div>'
                 : '',
-              '<div class="file">' + escapeHtml(task.filePath) + ":" + (task.line + 1) + '</div>',
+              '<div class="file" title="' + escapeHtml(task.location || task.filePath) + '">' + escapeHtml(getFileName(task.location || task.filePath)) + ":" + (task.line + 1) + '</div>',
               "</td>",
               "<td>",
               '<span class="badge status">' + escapeHtml(formatStatus(task.status)) + '</span>',
@@ -584,7 +592,10 @@ export class TaskArchivedProvider {
           }
 
           function renderRows(tasks) {
-            currentTasks = [...tasks];
+            currentTasks = tasks.map((task) => ({
+              ...task,
+              location: task.location || task.filePath,
+            }));
             currentPage = 1;
 
             renderTable();

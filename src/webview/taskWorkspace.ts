@@ -259,7 +259,12 @@ export class TaskWorkspaceProvider {
 
       critical: tasks.filter((task) => task.priority === "critical").length,
     };
-    const tasksJson = JSON.stringify(tasks).replace(/</g, "\\u003c");
+    const tasksJson = JSON.stringify(
+      tasks.map((task) => ({
+        ...task,
+        location: vscode.workspace.asRelativePath(task.filePath, true),
+      })),
+    ).replace(/</g, "\\u003c");
 
     return `
 			<!DOCTYPE html>
@@ -1354,6 +1359,10 @@ export class TaskWorkspaceProvider {
 					return filePath.split(/[\\/]/).pop() || "";
 				}
 
+				function getTaskLocation(task) {
+					return task.location || task.filePath;
+				}
+
 				function buildTaskRowHtml(task) {
 					const fileName =
 						getFileName(task.filePath);
@@ -1447,8 +1456,14 @@ export class TaskWorkspaceProvider {
 						">Critical</option>" +
 						"</select>" +
 						"</td>" +
-						"<td>" +
-						escapeHtml(task.filePath) +
+						'<td title="' +
+						escapeHtml(getTaskLocation(task)) +
+						'">' +
+						escapeHtml(
+							getFileName(
+								getTaskLocation(task)
+							)
+						) +
 						":" +
 						(task.line + 1) +
 						"</td>" +
@@ -1565,7 +1580,12 @@ export class TaskWorkspaceProvider {
 
 				function renderTaskRows(tasks) {
 					allTasks = Array.isArray(tasks)
-						? [...tasks]
+						? tasks.map((task) => ({
+								...task,
+								location:
+									task.location ||
+									task.filePath,
+						  }))
 						: [];
 
 					renderTable();
