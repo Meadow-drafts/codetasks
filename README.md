@@ -18,11 +18,11 @@ Turn TODO-style comments into a clean, lightweight task workspace inside VS Code
 
 ### Table View
 
-![CodeTasks table view](resources/table.png)
+![CodeTasks table view](./resources/table.png)
 
 ### Kanban View
 
-![CodeTasks kanban view](resources/kanban.png)
+![CodeTasks kanban view](./resources/kanban.png)
 
 ## What You Get
 
@@ -80,10 +80,11 @@ CodeTasks includes commands for opening the workspace, opening archived tasks, r
 
 - Repository: https://github.com/Meadow-drafts/codetasks
 - Issues: https://github.com/Meadow-drafts/codetasks/issues
+- Beginner tutorial: [docs/tutorial.md](./docs/tutorial.md)
 
 ## Release Notes
 
-### 0.0.4
+### 0.0.6
 
 ## Recent Updates
 

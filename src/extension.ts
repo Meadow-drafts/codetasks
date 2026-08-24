@@ -2,9 +2,9 @@ import * as vscode from "vscode";
 import { CodeTask } from "./models/task";
 import {
   DEFAULT_SCAN_EXCLUDE_GLOB,
+  documentHasTaskMarkers,
   scanTextDocument,
   scanWorkspace,
-  TASK_PATTERN,
 } from "./scanner/taskScanner";
 import { TaskStore } from "./store/taskStore";
 import { TaskTreeProvider } from "./providers/taskTreeProvider";
@@ -209,8 +209,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const isTracked = taskStore
       .getTasks()
       .some((task) => task.filePath === filePath);
-    const hasTaskMarker =
-      isTracked || TASK_PATTERN.test(document.getText());
+    const hasTaskMarker = isTracked || documentHasTaskMarkers(document);
 
     if (!hasTaskMarker) {
       return;

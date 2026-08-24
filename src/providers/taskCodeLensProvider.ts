@@ -1,47 +1,7 @@
 import * as vscode from "vscode";
 import { TaskStore } from "../store/taskStore";
 import { CodeTask, TaskPriority, TaskStatus } from "../models/task";
-import { TASK_PATTERN } from "../scanner/taskScanner";
-
-type TaskMarker = {
-  line: number;
-  type: CodeTask["type"];
-  title: string;
-};
-
-function isSupportedTaskType(value: string): value is CodeTask["type"] {
-  return ["TODO", "FIXME", "BUG", "HACK", "REFACTOR", "TASK"].includes(
-    value.toUpperCase(),
-  );
-}
-
-function findTaskMarkers(document: vscode.TextDocument): TaskMarker[] {
-  const markers: TaskMarker[] = [];
-  const lines = document.getText().split(/\r?\n/);
-
-  lines.forEach((line, index) => {
-    const match = line.match(TASK_PATTERN);
-
-    if (!match) {
-      return;
-    }
-
-    const [, rawType, title] = match;
-    const type = rawType.toUpperCase();
-
-    if (!isSupportedTaskType(type)) {
-      return;
-    }
-
-    markers.push({
-      line: index,
-      type,
-      title: title.trim(),
-    });
-  });
-
-  return markers;
-}
+import { findTaskMarkers } from "../scanner/taskScanner";
 
 function formatStatus(status: TaskStatus): string {
   switch (status) {

@@ -1,7 +1,11 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
 import { CodeTask } from "../models/task";
-import { createTaskId } from "../scanner/taskScanner";
+import {
+  createTaskId,
+  documentHasTaskMarkers,
+  scanTextContent,
+} from "../scanner/taskScanner";
 import { parseGitHubRemoteUrl } from "../services/githubAssigneeSuggestionService";
 import { reconcileTasks } from "../reconciler/taskReconciler";
 import { TaskStore } from "../store/taskStore";
@@ -87,6 +91,73 @@ suite("CodeTasks Store", () => {
     );
 
     assert.notStrictEqual(first, second);
+  });
+
+  test("scanTextContent ignores task-like class names in css", () => {
+    const css = `
+.bx-tag:before {
+  content: "\\eb6a";
+}
+
+.bx-task:before {
+  content: "\\eb6c";
+}
+
+/* TODO: style the icon */
+`.trim();
+
+    const tasks = scanTextContent("/tmp/icons.css", "css", css);
+
+    assert.strictEqual(tasks.length, 1);
+    assert.strictEqual(tasks[0].type, "TODO");
+    assert.strictEqual(tasks[0].title, "style the icon");
+    assert.strictEqual(tasks[0].line, 8);
+  });
+
+  test("documentHasTaskMarkers only returns true for actual comments", () => {
+    const css = `
+.fa-bug:before {
+  content: "\\f188";
+}
+`.trim();
+
+    assert.strictEqual(
+      documentHasTaskMarkers({
+        getText: () => css,
+        languageId: "css",
+      }),
+      false,
+    );
+  });
+
+  test("scanTextContent finds tasks in markdown html comments", () => {
+    const markdown = `
+# Project Notes
+
+<!-- TODO: write the introduction -->
+
+Regular text that should be ignored.
+`.trim();
+
+    const tasks = scanTextContent("/tmp/readme.md", "markdown", markdown);
+
+    assert.strictEqual(tasks.length, 1);
+    assert.strictEqual(tasks[0].type, "TODO");
+    assert.strictEqual(tasks[0].title, "write the introduction");
+  });
+
+  test("scanTextContent supports other common comment languages", () => {
+    const elixir = `
+defmodule Demo do
+  # BUG: handle nil input
+end
+`.trim();
+
+    const tasks = scanTextContent("/tmp/demo.ex", "elixir", elixir);
+
+    assert.strictEqual(tasks.length, 1);
+    assert.strictEqual(tasks[0].type, "BUG");
+    assert.strictEqual(tasks[0].title, "handle nil input");
   });
 
   test("parseGitHubRemoteUrl handles https remotes", () => {

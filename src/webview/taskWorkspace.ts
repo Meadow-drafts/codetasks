@@ -643,11 +643,39 @@ export class TaskWorkspaceProvider {
 				}
 
 
-				.kanban-card.dragging {
+					.kanban-card.dragging {
 					opacity: 0.5;
 
 					transform:
 						rotate(1deg);
+				}
+
+				.kanban-card.status-updated {
+					animation: kanban-card-pulse 0.7s ease;
+				}
+
+				@keyframes kanban-card-pulse {
+					0% {
+						box-shadow: 0 0 0 0
+							color-mix(
+								in srgb,
+								var(--vscode-focusBorder) 45%,
+								transparent
+							);
+						border-color: var(--vscode-focusBorder);
+					}
+					70% {
+						box-shadow: 0 0 0 10px
+							color-mix(
+								in srgb,
+								var(--vscode-focusBorder) 0%,
+								transparent
+							);
+					}
+					100% {
+						box-shadow: none;
+						border-color: var(--vscode-panel-border);
+					}
 				}
 	
 				.kanban-card-title {
@@ -1587,6 +1615,7 @@ export class TaskWorkspaceProvider {
 									task.filePath,
 						  }))
 						: [];
+					currentPage = 1;
 
 					renderTable();
 				}
@@ -1745,18 +1774,27 @@ export class TaskWorkspaceProvider {
 							return;
 						}
 
-						matchingTasks.forEach((task) => {
-							const card =
-								document.createElement(
-									"div"
-								);
+					matchingTasks.forEach((task) => {
+						const card =
+							document.createElement(
+								"div"
+							);
 
-							card.className =
-								"kanban-card";
+						card.className =
+							"kanban-card";
 
-							card.draggable = true;
-							card.dataset.taskId =
-								task.id;
+						if (
+							task.id ===
+							highlightedKanbanTaskId
+						) {
+							card.classList.add(
+								"status-updated"
+							);
+						}
+
+						card.draggable = true;
+						card.dataset.taskId =
+							task.id;
 
 							let wasDragging = false;
 
@@ -1858,6 +1896,24 @@ export class TaskWorkspaceProvider {
 							);
 						});
 					});
+				}
+
+				function highlightKanbanTask(taskId) {
+					highlightedKanbanTaskId = taskId;
+
+					if (highlightedKanbanTaskTimer) {
+						clearTimeout(
+							highlightedKanbanTaskTimer
+						);
+					}
+
+					highlightedKanbanTaskTimer = setTimeout(
+						() => {
+							highlightedKanbanTaskId = "";
+							highlightedKanbanTaskTimer = null;
+						},
+						900,
+					);
 				}
 
 
@@ -2025,6 +2081,10 @@ export class TaskWorkspaceProvider {
 				let currentPage = 1;
 
 				let pageSize = tablePageSize;
+
+				let highlightedKanbanTaskId = "";
+
+				let highlightedKanbanTaskTimer = null;
 
 
 				/*
@@ -2655,49 +2715,6 @@ export class TaskWorkspaceProvider {
 							message.command ===
 							"statusUpdated"
 						) {
-
-							const select =
-								document.querySelector(
-									'.status-select[data-task-id="' +
-									message.taskId +
-									'"]'
-								);
-
-
-							if (!select) {
-								return;
-							}
-
-
-							select.value =
-								message.status;
-
-
-							select.dataset.currentStatus =
-								message.status;
-
-
-							const row =
-								select.closest(
-									".task-row"
-								);
-
-
-							if (row) {
-
-								row.dataset.status =
-									message.status;
-							}
-
-
-							select.classList.remove(
-								"updating"
-							);
-
-
-							select.disabled =
-								false;
-
 							allTasks = allTasks.map(
 								(task) =>
 									task.id ===
@@ -2710,6 +2727,33 @@ export class TaskWorkspaceProvider {
 										: task
 							);
 
+							highlightKanbanTask(
+								message.taskId
+							);
+
+							const select =
+								document.querySelector(
+									'.status-select[data-task-id="' +
+									message.taskId +
+									'"]'
+								);
+
+							if (select) {
+								select.value =
+									message.status;
+
+								select.dataset.currentStatus =
+									message.status;
+
+								select.classList.remove(
+									"updating"
+								);
+
+								select.disabled =
+									false;
+							}
+
+							currentPage = 1;
 							renderTable();
 
 
@@ -2847,49 +2891,6 @@ export class TaskWorkspaceProvider {
 							message.command ===
 							"priorityUpdated"
 						) {
-
-							const select =
-								document.querySelector(
-									'.priority-select[data-task-id="' +
-									message.taskId +
-									'"]'
-								);
-
-
-							if (!select) {
-								return;
-							}
-
-
-							select.value =
-								message.priority;
-
-
-							select.dataset.currentPriority =
-								message.priority;
-
-
-							const row =
-								select.closest(
-									".task-row"
-								);
-
-
-							if (row) {
-
-								row.dataset.priority =
-									message.priority;
-							}
-
-
-							select.classList.remove(
-								"updating"
-							);
-
-
-							select.disabled =
-								false;
-
 							allTasks = allTasks.map(
 								(task) =>
 									task.id ===
@@ -2902,6 +2903,29 @@ export class TaskWorkspaceProvider {
 										: task
 							);
 
+							const select =
+								document.querySelector(
+									'.priority-select[data-task-id="' +
+									message.taskId +
+									'"]'
+								);
+
+							if (select) {
+								select.value =
+									message.priority;
+
+								select.dataset.currentPriority =
+									message.priority;
+
+								select.classList.remove(
+									"updating"
+								);
+
+								select.disabled =
+									false;
+							}
+
+							currentPage = 1;
 							renderTable();
 
 

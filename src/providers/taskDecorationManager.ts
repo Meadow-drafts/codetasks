@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { CodeTask } from "../models/task";
-import { TASK_PATTERN } from "../scanner/taskScanner";
+import { findTaskMarkers } from "../scanner/taskScanner";
 import { TaskStore } from "../store/taskStore";
 import {
   createTaskTypeIconDataUri,
@@ -28,38 +28,6 @@ function createEmptyBuckets(): DecorationBuckets {
     REFACTOR: [],
     TASK: [],
   };
-}
-
-function findTaskMarkers(document: vscode.TextDocument): Array<{
-  line: number;
-  type: CodeTask["type"];
-  title: string;
-}> {
-  const lines = document.getText().split(/\r?\n/);
-  const markers: Array<{
-    line: number;
-    type: CodeTask["type"];
-    title: string;
-  }> = [];
-
-  lines.forEach((line, index) => {
-    const match = line.match(TASK_PATTERN);
-
-    if (!match) {
-      return;
-    }
-
-    const [, rawType, title] = match;
-    const type = rawType.toUpperCase() as CodeTask["type"];
-
-    markers.push({
-      line: index,
-      type,
-      title: title.trim(),
-    });
-  });
-
-  return markers;
 }
 
 export class TaskDecorationManager implements vscode.Disposable {

@@ -6,6 +6,18 @@ Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how 
 
 ## [Unreleased]
 
+## [0.0.7]
+
+- Version bump for the next publishable build
+
+## [0.0.6]
+
+- Version bump for the next publishable build
+
+## [0.0.5]
+
+- Version bump for the next publishable build
+
 ## [0.0.4]
 
 - Table pagination for active and archived task lists

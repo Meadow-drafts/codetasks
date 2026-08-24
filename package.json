@@ -3,7 +3,7 @@
   "displayName": "CodeTasks — TODO & Kanban",
   "publisher": "SengkaShirley",
   "description": "Track and manage TODOs, FIXMEs, bugs and other code tasks with table and Kanban views.",
-  "version": "0.0.4",
+  "version": "0.0.7",
   "license": "SEE LICENSE IN LICENSE",
   "icon": "resources/icon.png",
     "galleryBanner": {
